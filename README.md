@@ -13,6 +13,15 @@ abap code backup
 
 将程序直接拷贝到 SAP 系统中，运行即可
 
+## todo
+
+[ ] 数据元素导出
+[ ] 数据域导出
+## 版本
+
+v1.00 初始 可用版本
+v1.01 新增 增量下载，避免无意义的耗时
+
 ## 协议
 
 [MIT](https://choosealicense.com/licenses/mit/)

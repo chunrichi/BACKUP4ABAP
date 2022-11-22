@@ -5,6 +5,7 @@
 *&---------------------------------------------------------------------*
 REPORT zbackup4abap.
 
+" 借用 DEMO_INDX_BLOB 记录一些增量信息 以加快运行速度
 
 *&----------------------------------------------------------------------
 *                     Type-Pools
@@ -39,6 +40,12 @@ TYPES: BEGIN OF ty_log_flow,
          uzeit TYPE uzeit,
        END OF ty_log_flow.
 
+TYPES: BEGIN OF ty_delt_log,
+         object TYPE trobjtype, " 对象类型
+         ddate  TYPE datum,     " 增量日期
+         dtime  TYPE uzeit,     " 增量时间
+       END OF ty_delt_log.
+
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
 
 *&----------------------------------------------------------------------
@@ -65,6 +72,8 @@ CONSTANTS: gc_newline TYPE abap_cr_lf VALUE cl_abap_char_utilities=>cr_lf.
 
 
 DATA: gt_range_append_class TYPE RANGE OF vseoclass-clsname.
+
+DATA: gt_delt_log TYPE TABLE OF ty_delt_log.
 
 *&----------------------------------------------------------------------
 *                     Select Screen
@@ -124,8 +133,18 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
 SELECTION-SCREEN END OF BLOCK blck1.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
-  SELECT-OPTIONS: s_class FOR tadir-devclass.
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_class.
+    SELECT-OPTIONS: s_class FOR tadir-devclass.
+  SELECTION-SCREEN END OF LINE.
 SELECTION-SCREEN END OF BLOCK blck3.
+
+SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_delt.
+    PARAMETERS: p_delt TYPE c AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN END OF BLOCK blck4.
 
 *&----------------------------------------------------------------------
 *                     Initialization
@@ -196,6 +215,9 @@ FORM frm_init_text .
   t_doma = '数据域'.
   t_dtel = '数据元素'.
 
+  t_class = '开发类(包)'.
+  t_delt  = '增量获取(不跨client)'.
+
   t_dddl = '导出DDL文件, 用于 SAP NetWeaver AS for ABAP 7.52 SP00 以上版本 ADT'.
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -204,6 +226,10 @@ ENDFORM.
 *&  检查输入
 *&---------------------------------------------------------------------*
 FORM frm_check .
+
+  IF s_class[] IS NOT INITIAL.
+    p_delt = ''.
+  ENDIF.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -229,6 +255,12 @@ FORM frm_init_variables .
                        ( tag = 'FILE' ) " 文件处理
                       ).
   SORT gt_folder BY tag.
+
+  " 增量数据获取
+  IF p_delt = 'X'.
+    IMPORT gt_delt_log FROM DATABASE demo_indx_blob(zd) ID 'DeltaDownload'.
+    SORT gt_delt_log BY object.
+  ENDIF.
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_get_code
@@ -276,11 +308,19 @@ FORM frm_get_code .
     gv_parent_folder = `field\Element\`.
     PERFORM frm_get_element.
   ENDIF.
- 
+
   gv_parent_folder = `logs\flow\`.
   PERFORM frm_get_logs. 
 
   PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH\`.
+
+  DATA: ls_blob TYPE demo_indx_blob.
+
+  IF p_delt = 'X'.
+    ls_blob-userid = sy-uname.
+    GET TIME STAMP FIELD ls_blob-timestamp.
+    EXPORT gt_delt_log TO DATABASE demo_indx_blob(zd) FROM ls_blob ID 'DeltaDownload'.
+  ENDIF.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -319,6 +359,16 @@ FORM frm_get_report .
     INTO TABLE @DATA(lt_list).
   SORT lt_list BY progname.
 
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'PROG' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'PROG' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
   LOOP AT lt_list INTO DATA(ls_list).
     " 文件夹匹配 -> 文件名
     lv_c_flag = |R{ ls_list-subc }|.
@@ -346,6 +396,17 @@ FORM frm_get_report .
 
     " 日志 生成 
     PERFORM frm_set_log_flow USING ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_list-udat
+        OR ( ls_delt_log-ddate = ls_list-udat AND ls_delt_log-dtime > ls_list-utime ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
 
     " 读取激活状态的代码
     READ REPORT ls_list-progname INTO lt_source STATE 'A' MAXIMUM WIDTH INTO lv_max.
@@ -430,7 +491,7 @@ FORM frm_get_function .
     ENDIF.
   ENDLOOP.
 
-  " 更新人获取 
+  " 更新人获取
   SELECT
     progname,
     unam,
@@ -439,7 +500,17 @@ FORM frm_get_function .
     FROM reposrc
     WHERE progname LIKE 'LZ%' AND appl = 'S'
     INTO TABLE @DATA(lt_rep).
-  SORT lt_rep BY progname. 
+  SORT lt_rep BY progname.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'FUNC' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'FUNC' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
 
   LOOP AT lt_func INTO DATA(ls_func).
 
@@ -459,8 +530,20 @@ FORM frm_get_function .
     lv_filename = gv_parent_folder && lv_filename.
 
     " 日志 生成
-    READ TABLE lt_rep INTO DATA(ls_rep) WITH KEY progname = lv_report_name BINARY SEARCH. 
+    READ TABLE lt_rep INTO DATA(ls_rep) WITH KEY progname = lv_report_name BINARY SEARCH.
     PERFORM frm_set_log_flow USING ls_func-functionname ls_rep-unam ls_rep-udat ls_rep-utime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_rep-udat
+        OR ( ls_delt_log-ddate = ls_rep-udat AND ls_delt_log-dtime > ls_rep-utime ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring, lv_report_name.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
     CLEAR ls_rep.
 
     " 读取激活状态的代码
@@ -506,6 +589,15 @@ FORM frm_get_function .
 
   DATA: lv_str_len TYPE i.
 
+  READ TABLE gt_delt_log ASSIGNING <ls_delt_log> WITH KEY object = 'FINC' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'FINC' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
   LOOP AT lt_list INTO DATA(ls_list).
     " 文件名
     lv_filename = |{ ls_list-progname }.{ gc_extension_name }|.
@@ -523,8 +615,19 @@ FORM frm_get_function .
         lv_filename = gv_parent_folder && `More\` && lv_filename.
     ENDCASE.
 
-    " 日志 生成 
+    " 日志 生成
     PERFORM frm_set_log_flow USING ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_list-udat
+        OR ( ls_delt_log-ddate = ls_list-udat AND ls_delt_log-dtime > ls_list-utime ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
 
     " 读取激活状态的代码
     READ REPORT ls_list-progname INTO lt_source STATE 'A' MAXIMUM WIDTH INTO lv_max.
@@ -925,6 +1028,16 @@ FORM frm_get_class .
     RECEIVING
       result = lo_instance.
 
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'CLSS' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'CLSS' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
   LOOP AT lt_class INTO DATA(ls_class).
 
     lv_filename = ls_class-clsname && '.abap'.
@@ -955,6 +1068,24 @@ FORM frm_get_class .
     "ENDDO.
     "CONCATENATE ls_class_key-typesclasskey 'CT' INTO ls_class_key-typesclasskey.
 
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_class-descript.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING ls_class-clsname ls_class-changedby ls_class-changedon '00000000'.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_class-changedon.
+        REFRESH lt_str.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
     " > 读取源码
     CALL METHOD lo_instance->('CREATE_CLIF_SOURCE')
       EXPORTING
@@ -966,14 +1097,6 @@ FORM frm_get_class .
     CALL METHOD lo_source->('GET_SOURCE')
       IMPORTING
         source = lt_str.
-
-    " map 文件路径
-    PERFORM frm_set_map_file USING lv_filename ls_class-descript.
-
-    lv_filename = gv_parent_folder && lv_filename.
-
-    " 日志 生成 
-    PERFORM frm_set_log_flow USING ls_class-clsname ls_class-changedby ls_class-changedon '00000000'.
 
     " 内表转换为长字符串
     CONCATENATE LINES OF lt_str INTO lv_source SEPARATED BY gc_newline.
@@ -1020,6 +1143,8 @@ FORM frm_get_class .
     ENDLOOP.
     " <--
 
+    REFRESH lt_str.
+    CLEAR: lv_filename, lv_xstring.
   ENDLOOP.
 
   " map 文件
@@ -1148,6 +1273,16 @@ FORM frm_get_ddl .
 
   SORT lt_ddlsrc BY ddlname.
 
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'DDLS' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'DDLS' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
   LOOP AT lt_ddlsrc INTO DATA(ls_ddl).
     " 文件夹匹配 -> 文件名
 
@@ -1166,6 +1301,17 @@ FORM frm_get_ddl .
 
     " 日志 生成 
     PERFORM frm_set_log_flow USING ls_ddl-ddlname ls_ddl-as4user ls_ddl-as4date ls_ddl-as4time.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_ddl-as4date
+        OR ( ls_delt_log-ddate = ls_ddl-as4date AND ls_delt_log-dtime > ls_ddl-as4time ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
 
     " --> Begin 清除末尾注释
     REPLACE FIRST OCCURRENCE OF REGEX `\/\*\+\[internal\].*\*\/` IN ls_ddl-source WITH ``.
@@ -1578,7 +1724,9 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
    dd~contflag,
    dd~authclass,
    dd~mainflag,
-   dd~exclass
+   dd~exclass,
+   dd~as4date,
+   dd~as4time
    FROM dd02l AS dd
    INNER JOIN tadir AS ta ON dd~tabname = ta~obj_name
    WHERE dd~tabname LIKE 'Z%'
@@ -1675,7 +1823,28 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
 
   DATA: lv_tabix TYPE sytabix.
 
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = p_type+0(4) BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = p_type+0(4) ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+
   LOOP AT lt_dd02l INTO DATA(ls_dd02l).
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_dd02l-as4date
+        OR ( ls_delt_log-ddate = ls_dd02l-as4date AND ls_delt_log-dtime > ls_dd02l-as4time ).
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
     APPEND INITIAL LINE TO pr_ddl->gt_tables ASSIGNING FIELD-SYMBOL(<ls_table>).
 
     " 表名
