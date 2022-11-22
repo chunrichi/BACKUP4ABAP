@@ -260,6 +260,11 @@ FORM frm_init_variables .
   IF p_delt = 'X'.
     IMPORT gt_delt_log FROM DATABASE demo_indx_blob(zd) ID 'DeltaDownload'.
     SORT gt_delt_log BY object.
+
+    " 时间减3s
+    LOOP AT gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>).
+      <ls_delt_log>-dtime -= 3.
+    ENDLOOP.
   ENDIF.
 ENDFORM.
 *&---------------------------------------------------------------------*
