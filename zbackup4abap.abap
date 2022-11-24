@@ -335,6 +335,10 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM frm_get_report .
 
+  " D010SINF REPOSRC 视图（INF 部分） => REPOSRC  程序含代码
+  " D010TINF REPOTEXT 视图（INF 部分）=> REPOTEXT 程序文本
+  " trdirt   标题文本
+
   DATA: lv_filename TYPE string.
   DATA: lt_source  TYPE TABLE OF text1000 WITH EMPTY KEY,
         lv_source  TYPE string,
@@ -1023,6 +1027,28 @@ FORM frm_get_class .
     DELETE ADJACENT DUPLICATES FROM lt_class COMPARING clsname.
   ENDIF.
 
+  " --> 获取真实修改时间（类下的子节点）
+  " 参考 LSEODF1X 948 行
+  DATA: lt_range_name TYPE RANGE OF progdir-name.
+  lt_range_name = VALUE #( FOR itm IN lt_class
+                            WHERE ( changedon IS INITIAL )
+                              ( sign = 'I' option = 'CP' low = |{ itm-clsname }*| ) ).
+  IF lt_range_name IS NOT INITIAL.
+    SELECT
+      name,
+      unam,
+      udat
+      FROM progdir
+      WHERE name IN @lt_range_name
+      INTO TABLE @DATA(lt_progdir).
+
+    LOOP AT lt_progdir ASSIGNING FIELD-SYMBOL(<ls_progdir>).
+      <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=+.*$` with = `` occ = -1 ).
+    ENDLOOP.
+    SORT lt_progdir BY name udat DESCENDING.
+  ENDIF.
+  " <--
+
   " 读取类
   DATA: lo_source   TYPE REF TO object,
         lo_instance TYPE REF TO object.
@@ -1077,6 +1103,15 @@ FORM frm_get_class .
     PERFORM frm_set_map_file USING lv_filename ls_class-descript.
 
     lv_filename = gv_parent_folder && lv_filename.
+
+    " 真实修改时间
+    IF ls_class-changedon IS INITIAL.
+      READ TABLE lt_progdir INTO DATA(ls_prodir_udat) WITH KEY name = ls_class-clsname BINARY SEARCH.
+      IF sy-subrc = 0.
+        ls_class-changedon = ls_prodir_udat-udat.
+        ls_class-changedby = ls_prodir_udat-unam.
+      ENDIF.
+    ENDIF.
 
     " 日志 生成
     PERFORM frm_set_log_flow USING ls_class-clsname ls_class-changedby ls_class-changedon '00000000'.
