@@ -82,51 +82,51 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
 
   " report
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_prog.
+    SELECTION-SCREEN COMMENT 5(23) t_prog FOR FIELD p_prog.
     PARAMETERS: p_prog AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " function
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_func.
+    SELECTION-SCREEN COMMENT 5(23) t_func FOR FIELD p_func.
     PARAMETERS: p_func AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " Table
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_tabl.
+    SELECTION-SCREEN COMMENT 5(23) t_tabl FOR FIELD p_tabl.
     PARAMETERS: p_tabl AS CHECKBOX DEFAULT 'X' USER-COMMAND tab.
   SELECTION-SCREEN END OF LINE.
 
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 15(10) t_txml MODIF ID gp1.
+    SELECTION-SCREEN COMMENT 15(10) t_txml MODIF ID gp1 FOR FIELD p_txml.
     PARAMETERS: p_txml TYPE c RADIOBUTTON GROUP gp1 USER-COMMAND gp1 MODIF ID gp1.
-    SELECTION-SCREEN COMMENT 35(10) t_tddl MODIF ID gp1.
+    SELECTION-SCREEN COMMENT 35(10) t_tddl MODIF ID gp1 FOR FIELD p_tddl.
     PARAMETERS: p_tddl TYPE c RADIOBUTTON GROUP gp1 MODIF ID gp1 DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
   SELECTION-SCREEN COMMENT 5(70) t_dddl MODIF ID gp1.
 
   " Class
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_clas.
+    SELECTION-SCREEN COMMENT 5(23) t_clas FOR FIELD p_clas.
     PARAMETERS: p_clas AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " DDL
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_cdsv.
+    SELECTION-SCREEN COMMENT 5(23) t_cdsv FOR FIELD p_cdsv.
     PARAMETERS: p_cdsv AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " Domain
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_doma.
+    SELECTION-SCREEN COMMENT 5(23) t_doma FOR FIELD p_doma.
     PARAMETERS: p_doma AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " Element
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_dtel.
+    SELECTION-SCREEN COMMENT 5(23) t_dtel FOR FIELD p_dtel.
     PARAMETERS: p_dtel AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
@@ -134,14 +134,14 @@ SELECTION-SCREEN END OF BLOCK blck1.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_class.
+    SELECTION-SCREEN COMMENT 5(23) t_class FOR FIELD s_class.
     SELECT-OPTIONS: s_class FOR tadir-devclass.
   SELECTION-SCREEN END OF LINE.
 SELECTION-SCREEN END OF BLOCK blck3.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_delt.
+    SELECTION-SCREEN COMMENT 5(23) t_delt FOR FIELD p_delt.
     PARAMETERS: p_delt TYPE c AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 SELECTION-SCREEN END OF BLOCK blck4.
@@ -315,7 +315,7 @@ FORM frm_get_code .
   ENDIF.
 
   gv_parent_folder = `logs\flow\`.
-  PERFORM frm_get_logs. 
+  PERFORM frm_get_logs.
 
   PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH\`.
 
@@ -403,7 +403,7 @@ FORM frm_get_report .
 
     lv_filename = gv_parent_folder && lv_filename.
 
-    " 日志 生成 
+    " 日志 生成
     PERFORM frm_set_log_flow USING ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
 
     " 检查增量
@@ -464,7 +464,7 @@ FORM frm_get_function .
         lv_xstring TYPE xstring.
   DATA: lv_report_name TYPE char50.
 
-  DATA: lv_folder TYPE char2,
+  DATA: lv_folder TYPE char10,
         lv_max    TYPE i.
 
   " 此处获取所有的 Z* 函数组数据
@@ -1339,7 +1339,7 @@ FORM frm_get_ddl .
 
     lv_filename = gv_parent_folder && lv_filename.
 
-    " 日志 生成 
+    " 日志 生成
     PERFORM frm_set_log_flow USING ls_ddl-ddlname ls_ddl-as4user ls_ddl-as4date ls_ddl-as4time.
 
     " 检查增量
