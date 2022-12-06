@@ -143,6 +143,16 @@ SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
 
 SELECTION-SCREEN END OF BLOCK blck2.
 
+SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
+  " 其他
+
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_smw0 FOR FIELD p_smw0.
+    PARAMETERS: p_smw0 AS CHECKBOX DEFAULT ''.
+  SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN END OF BLOCK blck3.
+
 SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_pack FOR FIELD s_pack.
@@ -235,6 +245,7 @@ FORM frm_init_text .
   t_cdsv = 'CDS视图'.
   t_doma = '数据域'.
   t_dtel = '数据元素'.
+  t_smw0 = 'SMW0(Z*)附件'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -2155,6 +2166,17 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM frm_get_others .
 
+  IF p_smw0 = abap_true.
+    gv_parent_folder = `SMW0\`.
+    " 由于文件名包含中文，设置编码格式为 UTF-8
+    gr_zip->support_unicode_names = abap_true.
+
+    PERFORM frm_get_smw0.
+
+    " 还原设置
+    gr_zip->support_unicode_names = abap_false.
+  ENDIF.
+
   PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH\`.
 
   " 结果存储
@@ -2168,5 +2190,117 @@ FORM frm_get_others .
     GET TIME STAMP FIELD ls_blob-timestamp.
     EXPORT gt_delt_log TO DATABASE demo_indx_blob(zd) FROM ls_blob ID 'DeltaDownload'.
   ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_smw0
+*&---------------------------------------------------------------------*
+*&  获取 SMW0
+*&---------------------------------------------------------------------*
+FORM frm_get_smw0 .
+  DATA: lv_filename TYPE string.
+  DATA: lt_mime TYPE TABLE OF w3mime.
+  DATA: lv_xstring TYPE xstring,
+        lv_size    TYPE i.
+
+  SELECT
+    relid,
+    objid,
+    chname,
+    tdate,
+    ttime,
+    text
+    FROM wwwdata
+   WHERE srtf2 = 0
+     AND relid = 'MI'
+     AND objid LIKE 'Z%'
+    INTO TABLE @DATA(lt_smw0).
+  IF sy-subrc <> 0.
+    " 未找到数据不进行下载
+    RETURN.
+  ENDIF.
+
+  " 获取文件参数
+  SELECT
+    objid,
+    name,
+    value
+    FROM wwwparams
+    WHERE relid = 'MI'
+      AND objid LIKE 'Z%'
+    INTO TABLE @DATA(lt_param).
+
+  SORT lt_smw0 BY objid.
+  SORT lt_param BY objid name.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'SMW0' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'SMW0' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  LOOP AT lt_smw0 INTO DATA(ls_smw0).
+    lv_filename = ls_smw0-objid && `_` && ls_smw0-text.
+
+    " 后缀名
+    READ TABLE lt_param INTO DATA(ls_param_ext) WITH KEY objid = ls_smw0-objid name = 'fileextension' BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_filename = lv_filename && ls_param_ext-value.
+    ENDIF.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_smw0-text.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'SMW0' ls_smw0-objid ls_smw0-chname ls_smw0-tdate ls_smw0-ttime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_smw0-tdate
+        OR ( ls_delt_log-ddate = ls_smw0-tdate AND ls_delt_log-dtime > ls_smw0-ttime ).
+        REFRESH lt_mime.
+        CLEAR: lv_filename, lv_xstring, lv_size.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 文件长度
+    READ TABLE lt_param INTO DATA(ls_param_size) WITH KEY objid = ls_smw0-objid name = 'filesize' BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_size = ls_param_size-value.
+    ENDIF.
+
+    IMPORT mime = lt_mime FROM DATABASE wwwdata(mi) ID ls_smw0-objid .
+    IF sy-subrc = 0.
+      CALL FUNCTION 'SCMS_BINARY_TO_XSTRING'
+        EXPORTING
+          input_length = lv_size
+        IMPORTING
+          buffer       = lv_xstring
+        TABLES
+          binary_tab   = lt_mime
+        EXCEPTIONS
+          failed       = 1
+          OTHERS       = 2.
+    ENDIF.
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    " 清除缓存
+    REFRESH lt_mime.
+    CLEAR: lv_filename, lv_xstring, lv_size.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
 
 ENDFORM.
