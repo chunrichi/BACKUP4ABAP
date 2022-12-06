@@ -79,6 +79,7 @@ DATA: gt_delt_log TYPE TABLE OF ty_delt_log.
 *                     Select Screen
 *&----------------------------------------------------------------------
 SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
+  " 代码相关
 
   " report
   SELECTION-SCREEN BEGIN OF LINE.
@@ -91,6 +92,17 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
     SELECTION-SCREEN COMMENT 5(23) t_func FOR FIELD p_func.
     PARAMETERS: p_func AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
+
+  " Class
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_clas FOR FIELD p_clas.
+    PARAMETERS: p_clas AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN END OF BLOCK blck1.
+
+SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
+  " 表相关
 
   " Table
   SELECTION-SCREEN BEGIN OF LINE.
@@ -105,12 +117,6 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
     PARAMETERS: p_tddl TYPE c RADIOBUTTON GROUP gp1 MODIF ID gp1 DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
   SELECTION-SCREEN COMMENT 5(70) t_dddl MODIF ID gp1.
-
-  " Class
-  SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_clas FOR FIELD p_clas.
-    PARAMETERS: p_clas AS CHECKBOX DEFAULT 'X'.
-  SELECTION-SCREEN END OF LINE.
 
   " DDL
   SELECTION-SCREEN BEGIN OF LINE.
@@ -130,21 +136,21 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
     PARAMETERS: p_dtel AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
-SELECTION-SCREEN END OF BLOCK blck1.
-
-SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
-  SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_class FOR FIELD s_class.
-    SELECT-OPTIONS: s_class FOR tadir-devclass.
-  SELECTION-SCREEN END OF LINE.
-SELECTION-SCREEN END OF BLOCK blck3.
+SELECTION-SCREEN END OF BLOCK blck2.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_pack FOR FIELD s_pack.
+    SELECT-OPTIONS: s_pack FOR tadir-devclass.
+  SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN END OF BLOCK blck4.
+
+SELECTION-SCREEN BEGIN OF BLOCK blck5 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_delt FOR FIELD p_delt.
     PARAMETERS: p_delt TYPE c AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
-SELECTION-SCREEN END OF BLOCK blck4.
+SELECTION-SCREEN END OF BLOCK blck5.
 
 *&----------------------------------------------------------------------
 *                     Initialization
@@ -167,6 +173,12 @@ AT SELECTION-SCREEN OUTPUT.
       screen-input = 0.
       MODIFY SCREEN.
     ENDIF.
+
+    " 功能开发中
+    IF screen-name = 'P_DOMA' OR screen-name = 'P_DTEL'.
+      screen-input = 0.
+      MODIFY SCREEN.
+    ENDIF.
   ENDLOOP.
 
 *&----------------------------------------------------------------------
@@ -180,8 +192,8 @@ AT SELECTION-SCREEN.
 *&----------------------------------------------------------------------
 START-OF-SELECTION.
 
-  IF s_class[] IS NOT INITIAL.
-    gt_range_devclass = VALUE #( FOR _ IN s_class[] ( _ ) ).
+  IF s_pack[] IS NOT INITIAL.
+    gt_range_devclass = VALUE #( FOR _ IN s_pack[] ( _ ) ).
   ENDIF.
 
   PERFORM frm_check.
@@ -193,6 +205,10 @@ START-OF-SELECTION.
   PERFORM frm_get_path.
 
   PERFORM frm_get_code.
+  PERFORM frm_get_ddic.
+
+  PERFORM frm_get_others.
+
 
   PERFORM frm_export_zip.
 
@@ -215,7 +231,7 @@ FORM frm_init_text .
   t_doma = '数据域'.
   t_dtel = '数据元素'.
 
-  t_class = '开发类(包)'.
+  t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
 
   t_dddl = '导出DDL文件, 用于 SAP NetWeaver AS for ABAP 7.52 SP00 以上版本 ADT'.
@@ -226,8 +242,8 @@ ENDFORM.
 *&  检查输入
 *&---------------------------------------------------------------------*
 FORM frm_check .
-
-  IF s_class[] IS NOT INITIAL.
+  " 指定包后 不在进行增量获取
+  IF s_pack[] IS NOT INITIAL.
     p_delt = ''.
   ENDIF.
 
@@ -284,6 +300,19 @@ FORM frm_get_code .
     PERFORM frm_get_function.
   ENDIF.
 
+  IF p_clas = abap_true.
+    gv_parent_folder = `SE24\`.
+    PERFORM frm_get_class.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_DDIC
+*&---------------------------------------------------------------------*
+*&  获取表相关内容
+*&---------------------------------------------------------------------*
+FORM frm_get_ddic .
+
   IF p_tabl = abap_true.
     gv_parent_folder = `SE11\`.
     IF p_txml = abap_true.
@@ -299,11 +328,6 @@ FORM frm_get_code .
     PERFORM frm_get_ddl.
   ENDIF.
 
-  IF p_clas = abap_true.
-    gv_parent_folder = `SE24\`.
-    PERFORM frm_get_class.
-  ENDIF.
-
   IF p_doma = abap_true.
     gv_parent_folder = `field\Domain\`.
     PERFORM frm_get_domain.
@@ -312,19 +336,6 @@ FORM frm_get_code .
   IF p_dtel = abap_true.
     gv_parent_folder = `field\Element\`.
     PERFORM frm_get_element.
-  ENDIF.
-
-  gv_parent_folder = `logs\flow\`.
-  PERFORM frm_get_logs.
-
-  PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH\`.
-
-  DATA: ls_blob TYPE demo_indx_blob.
-
-  IF p_delt = 'X'.
-    ls_blob-userid = sy-uname.
-    GET TIME STAMP FIELD ls_blob-timestamp.
-    EXPORT gt_delt_log TO DATABASE demo_indx_blob(zd) FROM ls_blob ID 'DeltaDownload'.
   ENDIF.
 
 ENDFORM.
@@ -1382,7 +1393,7 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM frm_get_more .
 
-  IF s_class[] IS INITIAL.
+  IF s_pack[] IS INITIAL.
     " 更多 类
     APPEND VALUE #( sign = 'I' option = 'EQ' low = 'CL_IM_PMMO_MD_PURREQ_CHG' ) TO gt_range_append_class.
 
@@ -2159,5 +2170,27 @@ ENDFORM.
 *&  获取数据元素
 *&---------------------------------------------------------------------*
 FORM frm_get_element .
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_others
+*&---------------------------------------------------------------------*
+*&  保存其他
+*&---------------------------------------------------------------------*
+FORM frm_get_others .
+
+  PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH\`.
+
+  " 结果存储
+  gv_parent_folder = `logs\flow\`.
+  PERFORM frm_get_logs.
+
+  DATA: ls_blob TYPE demo_indx_blob.
+
+  IF p_delt = 'X'.
+    ls_blob-userid = sy-uname.
+    GET TIME STAMP FIELD ls_blob-timestamp.
+    EXPORT gt_delt_log TO DATABASE demo_indx_blob(zd) FROM ls_blob ID 'DeltaDownload'.
+  ENDIF.
 
 ENDFORM.
