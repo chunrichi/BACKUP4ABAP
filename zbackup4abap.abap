@@ -33,11 +33,16 @@ TYPES: BEGIN OF ty_function,
          progname            LIKE tfdir-pname,
        END OF ty_function.
 
-TYPES: BEGIN OF ty_log_flow,
+TYPES: BEGIN OF ty_log_list,
          main  TYPE text30,
          uname TYPE text12,
          datum TYPE datum,
          uzeit TYPE uzeit,
+       END OF ty_log_list.
+TYPES: tt_log_list TYPE STANDARD TABLE OF ty_log_list WITH DEFAULT KEY.
+TYPES: BEGIN OF ty_log_flow,
+         type TYPE text30,
+         info TYPE tt_log_list,
        END OF ty_log_flow.
 
 TYPES: BEGIN OF ty_delt_log,
@@ -415,7 +420,7 @@ FORM frm_get_report .
     lv_filename = gv_parent_folder && lv_filename.
 
     " 日志 生成
-    PERFORM frm_set_log_flow USING ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
+    PERFORM frm_set_log_flow USING 'PROG' ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
 
     " 检查增量
     IF p_delt = 'X'.
@@ -551,7 +556,7 @@ FORM frm_get_function .
 
     " 日志 生成
     READ TABLE lt_rep INTO DATA(ls_rep) WITH KEY progname = lv_report_name BINARY SEARCH.
-    PERFORM frm_set_log_flow USING ls_func-functionname ls_rep-unam ls_rep-udat ls_rep-utime.
+    PERFORM frm_set_log_flow USING 'FUNC' ls_func-functionname ls_rep-unam ls_rep-udat ls_rep-utime.
 
     " 检查增量
     IF p_delt = 'X'.
@@ -636,7 +641,7 @@ FORM frm_get_function .
     ENDCASE.
 
     " 日志 生成
-    PERFORM frm_set_log_flow USING ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
+    PERFORM frm_set_log_flow USING 'FINC' ls_list-progname ls_list-unam ls_list-udat ls_list-utime.
 
     " 检查增量
     IF p_delt = 'X'.
@@ -1125,7 +1130,7 @@ FORM frm_get_class .
     ENDIF.
 
     " 日志 生成
-    PERFORM frm_set_log_flow USING ls_class-clsname ls_class-changedby ls_class-changedon '00000000'.
+    PERFORM frm_set_log_flow USING 'CLASS' ls_class-clsname ls_class-changedby ls_class-changedon '00000000'.
 
     " 检查增量
     IF p_delt = 'X'.
@@ -1209,43 +1214,8 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM frm_get_logs .
 
-  DATA: lt_log_flow TYPE TABLE OF string.
-
-  LOOP AT gt_log_flow ASSIGNING FIELD-SYMBOL(<ls_flow>).
-
-    APPEND |{ <ls_flow>-main WIDTH = 34 }{ <ls_flow>-datum WIDTH = 10 } { <ls_flow>-uname WIDTH = 16 } { <ls_flow>-uzeit }| TO lt_log_flow.
-
-  ENDLOOP.
-
-  DATA: lv_source  TYPE string,
-        lv_addtion TYPE string,
-        lv_xstring TYPE xstring.
+  DATA: lv_xstring TYPE xstring.
   DATA: lv_filename TYPE string.
-
-  CONCATENATE LINES OF lt_log_flow INTO lv_source SEPARATED BY gc_newline.
-
-  lv_filename = gv_parent_folder && `flow_` && sy-datum && `.txt`.
-
-  gr_cover_out->convert(
-        EXPORTING data = lv_source
-        IMPORTING buffer = lv_xstring ).
-
-  " 添加到压缩包
-  gr_zip->add( name    = lv_filename
-               content = lv_xstring ).
-
-  " string -> xstring
-  lv_addtion = |{ sy-datum } { sy-uzeit }|.
-  CONCATENATE lv_addtion lv_source INTO lv_source SEPARATED BY gc_newline.
-  gr_cover_out->convert(
-        EXPORTING data = lv_source
-        IMPORTING buffer = lv_xstring ).
-
-  lv_filename = gv_parent_folder && `log_flow.txt`.
-
-  " 添加到压缩包
-  gr_zip->add( name    = lv_filename
-               content = lv_xstring ).
 
   " json
   lv_filename = `logs\log_flow_` && sy-datum && `.json`.
@@ -1263,14 +1233,14 @@ FORM frm_get_logs .
   gr_zip->add( name    = lv_filename
                content = lv_xstring ).
 
-
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_set_log_flow
 *&---------------------------------------------------------------------*
 *&  获取流日志
 *&---------------------------------------------------------------------*
-FORM frm_set_log_flow  USING VALUE(p_progname)
+FORM frm_set_log_flow  USING VALUE(p_type) TYPE text30
+                             VALUE(p_progname)
                              VALUE(p_unam)
                              VALUE(p_udat)
                              VALUE(p_utime).
@@ -1283,10 +1253,16 @@ FORM frm_set_log_flow  USING VALUE(p_progname)
     lv_uname = `Other`.
   ENDIF.
 
+  READ TABLE gt_log_flow ASSIGNING FIELD-SYMBOL(<ls_log_flow>) WITH KEY type = p_type.
+  IF sy-subrc <> 0.
+    APPEND INITIAL LINE TO gt_log_flow ASSIGNING <ls_log_flow>.
+    <ls_log_flow>-type = p_type.
+  ENDIF.
+
   APPEND VALUE #( main = |{ p_progname }|
                   uname = lv_uname
                   datum = |{ p_udat }|
-                  uzeit = |{ p_utime }| ) TO gt_log_flow.
+                  uzeit = |{ p_utime }| ) TO <ls_log_flow>-info.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -1351,7 +1327,7 @@ FORM frm_get_ddl .
     lv_filename = gv_parent_folder && lv_filename.
 
     " 日志 生成
-    PERFORM frm_set_log_flow USING ls_ddl-ddlname ls_ddl-as4user ls_ddl-as4date ls_ddl-as4time.
+    PERFORM frm_set_log_flow USING 'DDLS' ls_ddl-ddlname ls_ddl-as4user ls_ddl-as4date ls_ddl-as4time.
 
     " 检查增量
     IF p_delt = 'X'.
