@@ -406,6 +406,11 @@ FORM frm_get_report .
   ENDIF.
 
   LOOP AT lt_list INTO DATA(ls_list).
+    " 忽略当前程序
+    IF ls_list-progname = sy-cprog.
+      CONTINUE.
+    ENDIF.
+
     " 文件夹匹配 -> 文件名
     lv_c_flag = |R{ ls_list-subc }|.
     PERFORM frm_get_folder_name USING lv_c_flag ls_list-progname lv_folder.
