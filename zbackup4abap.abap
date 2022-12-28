@@ -1309,7 +1309,7 @@ FORM frm_get_ddl .
     LEFT JOIN ddddlsrct AS ct ON ct~ddlname = rc~ddlname
                              AND ct~ddlanguage = '1'
                                AND ct~as4local = rc~as4local
-    WHERE rc~ddlname LIKE 'ZV%'
+    WHERE rc~ddlname LIKE 'Z%'
       AND rc~as4local = 'A'
       AND ta~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_ddlsrc).
