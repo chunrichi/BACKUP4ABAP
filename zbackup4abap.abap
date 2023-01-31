@@ -52,6 +52,7 @@ TYPES: BEGIN OF ty_delt_log,
        END OF ty_delt_log.
 
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
+CLASS lcl_pretty_json DEFINITION DEFERRED.
 
 *&----------------------------------------------------------------------
 *                     Variables
@@ -132,13 +133,13 @@ SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
   " Domain
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_doma FOR FIELD p_doma.
-    PARAMETERS: p_doma AS CHECKBOX DEFAULT ''.
+    PARAMETERS: p_doma AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " Element
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_dtel FOR FIELD p_dtel.
-    PARAMETERS: p_dtel AS CHECKBOX DEFAULT ''.
+    PARAMETERS: p_dtel AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
 SELECTION-SCREEN END OF BLOCK blck2.
@@ -185,12 +186,6 @@ AT SELECTION-SCREEN OUTPUT.
 
     " 功能未有，此处暂时不可显示
     IF screen-name = 'P_TXML'.
-      screen-input = 0.
-      MODIFY SCREEN.
-    ENDIF.
-
-    " 功能开发中
-    IF screen-name = 'P_DOMA' OR screen-name = 'P_DTEL'.
       screen-input = 0.
       MODIFY SCREEN.
     ENDIF.
@@ -345,12 +340,12 @@ FORM frm_get_ddic .
   ENDIF.
 
   IF p_doma = abap_true.
-    gv_parent_folder = `field/Domain/`.
+    gv_parent_folder = `SE11/field/Domain/`.
     PERFORM frm_get_domain.
   ENDIF.
 
   IF p_dtel = abap_true.
-    gv_parent_folder = `field/Element/`.
+    gv_parent_folder = `SE11/field/Element/`.
     PERFORM frm_get_element.
   ENDIF.
 
@@ -1461,6 +1456,13 @@ CLASS lcl_export_ddldict DEFINITION FINAL.
 ENDCLASS.
 
 
+CLASS lcl_pretty_json DEFINITION.
+  PUBLIC SECTION.
+
+    CLASS-METHODS: pretty IMPORTING json               TYPE string
+                          RETURNING VALUE(pretty_json) TYPE string.
+ENDCLASS.
+
 CLASS lcl_export_ddldict IMPLEMENTATION.
 
   METHOD: table_maintain.
@@ -1693,6 +1695,34 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
     ENDCASE.
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS lcl_pretty_json IMPLEMENTATION.
+  METHOD pretty.
+
+    "cloud
+    DATA(json_xstring) = cl_abap_conv_codepage=>create_out( )->convert( json ).
+    "on_premise
+    "DATA(json_xstring) = cl_abap_codepage=>convert_to( json_string_in ).
+
+    "Check and pretty print JSON
+
+    DATA(reader) = cl_sxml_string_reader=>create( json_xstring ).
+    DATA(writer) = CAST if_sxml_writer(
+                          cl_sxml_string_writer=>create( type = if_sxml=>co_xt_json ) ).
+    writer->set_option( option = if_sxml_writer=>co_opt_linebreaks ).
+    writer->set_option( option = if_sxml_writer=>co_opt_indent ).
+    reader->next_node( ).
+    reader->skip_node( writer ).
+
+    "cloud
+    DATA(json_formatted_string) = cl_abap_conv_codepage=>create_in( )->convert( CAST cl_sxml_string_writer( writer )->get_output( ) ).
+    "on premise
+    "DATA(json_formatted_string) = cl_abap_codepage=>convert_from( CAST cl_sxml_string_writer( writer )->get_output( ) ).
+
+    pretty_json = escape( val = json_formatted_string format = cl_abap_format=>e_xml_text  ).
+
+  ENDMETHOD.
 ENDCLASS.
 
 FORM frm_get_tables_ddl USING pr_zip TYPE REF TO cl_abap_zip
@@ -2147,12 +2177,149 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM frm_get_domain .
 
+  " 数据元素和数据域对应关系 DD04L
+  " 数据域值     DD07L
+  " 数据域文本   DD01T
+  " 数据域       DD01L
+
   " 数据域
   " 目的便于查看与还原
+  TYPES: BEGIN OF ty_domavalues,
+           valpos     TYPE i,
+           ddtext     TYPE string,
+           domvalue_l TYPE string,
+           domvalue_h TYPE string,
+           appval     TYPE abap_bool, " 附加
+         END OF ty_domavalues.
+  TYPES: BEGIN OF ty_doma,
+           domname TYPE dd01l-domname,
+           as4user TYPE dd01l-as4user,
+           as4date TYPE dd01l-as4date,
+           as4time TYPE dd01l-as4time,
+           values  TYPE TABLE OF ty_domavalues WITH DEFAULT KEY,
+         END OF ty_doma.
+
+  DATA: lv_filename TYPE string.
+
+  DATA: lt_source  TYPE TABLE OF text1000 WITH EMPTY KEY,
+        lv_source  TYPE string,
+        lv_xstring TYPE xstring.
+  DATA: ls_doma  TYPE ty_doma,
+        lv_tabix TYPE sytabix.
 
   " 数据获取
+  SELECT
+    dd~domname,
+    dd~as4user,
+    dd~as4date,
+    dd~as4time,
+    dt~ddtext
+    FROM dd01l AS dd
+    INNER JOIN tadir AS ta ON dd~domname = ta~obj_name
+    LEFT JOIN dd01t AS dt ON dt~domname = dd~domname AND dt~ddlanguage = @sy-langu
+                         AND dt~as4local = dd~as4local AND dt~as4vers = dd~as4vers
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object = 'DOMA'
+      AND ta~devclass IN @gt_range_devclass
+      AND dd~as4local = 'A'
+      AND dd~domname  LIKE 'Z%'
+      AND dd~as4user <> 'SAP'
+    INTO TABLE @DATA(lt_dd01l).
 
-  "
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'DOMA' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'DOMA' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  " 获取域值
+  IF lt_dd01l IS NOT INITIAL.
+    SELECT
+      dl~domname,
+      dl~valpos,
+      dt~ddtext,
+      dl~domvalue_l,
+      dl~domvalue_h,
+      dl~appval     " 附加
+      FROM dd07l AS dl
+      LEFT JOIN dd07t AS dt ON dt~domname  = dl~domname
+                           AND dt~valpos   = dl~valpos
+                           AND dt~as4vers  = dl~as4vers
+                           AND dt~ddlanguage = @sy-langu
+      FOR ALL ENTRIES IN @lt_dd01l
+      WHERE dl~domname = @lt_dd01l-domname
+      INTO TABLE @DATA(lt_dd07).
+    SORT lt_dd07 BY domname valpos.
+  ENDIF.
+
+  LOOP AT lt_dd01l INTO DATA(ls_dd01).
+    lv_filename = ls_dd01-domname && '.json'.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_dd01-ddtext.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'DOMA' ls_dd01-domname ls_dd01-as4user ls_dd01-as4date ls_dd01-as4time.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_dd01-as4date
+        OR ( ls_delt_log-ddate = ls_dd01-as4date AND ls_delt_log-dtime > ls_dd01-as4time ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 生成 json 文件
+    ls_doma-domname = ls_dd01-domname.
+    ls_doma-as4user = ls_dd01-as4user.
+    ls_doma-as4date = ls_dd01-as4date.
+    ls_doma-as4time = ls_dd01-as4time.
+
+    READ TABLE lt_dd07 TRANSPORTING NO FIELDS WITH KEY domname = ls_dd01-domname BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_tabix = sy-tabix.
+
+      LOOP AT lt_dd07 INTO DATA(ls_dd07) FROM lv_tabix.
+        IF ls_dd07-domname <> ls_dd01-domname.
+          EXIT.
+        ENDIF.
+
+        APPEND CORRESPONDING #( ls_dd07 ) TO ls_doma-values.
+      ENDLOOP.
+    ENDIF.
+
+    GET REFERENCE OF ls_doma INTO DATA(lo_doma).
+
+    lv_source = /ui2/cl_json=>serialize( data = lo_doma
+                                  pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+    CLEAR ls_doma.
+
+    lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+    " string -> xstring
+    gr_cover_out->convert(
+          EXPORTING data = lv_source
+          IMPORTING buffer = lv_xstring ).
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    " 清除缓存
+    CLEAR: lv_filename, lv_xstring, lv_source.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -2161,6 +2328,130 @@ ENDFORM.
 *&  获取数据元素
 *&---------------------------------------------------------------------*
 FORM frm_get_element .
+
+  " 数据元素和数据域对应关系 DD04L
+
+  " 数据元素
+  " 目的便于查看与还原
+  TYPES: BEGIN OF ty_elem,
+           rollname  TYPE dd04l-rollname,
+           domname   TYPE dd04l-domname,
+           as4user   TYPE dd04l-as4user,
+           as4date   TYPE dd04l-as4date,
+           as4time   TYPE dd04l-as4time,
+           datatype  TYPE dd04l-datatype,
+           leng      TYPE dd04l-leng,
+           decimals  TYPE dd04l-decimals,
+           outputlen TYPE dd04l-outputlen,
+           lowercase TYPE dd04l-lowercase,
+           convexit  TYPE dd04l-convexit,
+           entitytab TYPE dd04l-entitytab,
+           refkind   TYPE dd04l-refkind,
+           ddtext    TYPE dd04t-ddtext,
+           reptext   TYPE dd04t-reptext,
+           scrtext_s TYPE dd04t-scrtext_s,
+           scrtext_m TYPE dd04t-scrtext_m,
+           scrtext_l TYPE dd04t-scrtext_l,
+         END OF ty_elem.
+
+  DATA: lv_filename TYPE string.
+
+  DATA: lt_source  TYPE TABLE OF text1000 WITH EMPTY KEY,
+        lv_source  TYPE string,
+        lv_xstring TYPE xstring.
+  DATA: ls_elem  TYPE ty_elem,
+        lv_tabix TYPE sytabix.
+
+  " 数据获取
+  SELECT
+    dd~rollname,
+    dd~domname,
+    dd~as4user,
+    dd~as4date,
+    dd~as4time,
+    dd~datatype,
+    dd~leng,
+    dd~decimals,
+    dd~outputlen,
+    dd~lowercase,
+    dd~convexit,
+    dd~entitytab,
+    dd~refkind,
+    dt~ddtext,
+    dt~reptext,
+    dt~scrtext_s,
+    dt~scrtext_m,
+    dt~scrtext_l
+    FROM dd04l AS dd
+    INNER JOIN tadir AS ta ON dd~rollname = ta~obj_name
+    LEFT JOIN dd04t AS dt ON dt~rollname = dd~rollname AND dt~ddlanguage = dd~dtelmaster
+                         AND dt~as4local = dd~as4local AND dt~as4vers = dd~as4vers
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object = 'DTEL'
+      AND ta~devclass IN @gt_range_devclass
+      AND dd~as4local = 'A'
+      AND dd~rollname  LIKE 'Z%'
+      AND dd~as4user <> 'SAP'
+    INTO TABLE @DATA(lt_dd04l).
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'DTEL' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'DTEL' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  LOOP AT lt_dd04l INTO DATA(ls_dd04).
+    lv_filename = ls_dd04-rollname && '.json'.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_dd04-ddtext.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'DTEL' ls_dd04-domname ls_dd04-as4user ls_dd04-as4date ls_dd04-as4time.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_dd04-as4date
+        OR ( ls_delt_log-ddate = ls_dd04-as4date AND ls_delt_log-dtime > ls_dd04-as4time ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 生成 json 文件
+    MOVE-CORRESPONDING ls_dd04 TO ls_elem.
+
+    GET REFERENCE OF ls_elem INTO DATA(lo_elem).
+
+    lv_source = /ui2/cl_json=>serialize( data = lo_elem
+                                  pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+    CLEAR ls_elem.
+
+    lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+    " string -> xstring
+    gr_cover_out->convert(
+          EXPORTING data = lv_source
+          IMPORTING buffer = lv_xstring ).
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    " 清除缓存
+    CLEAR: lv_filename, lv_xstring, lv_source.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
