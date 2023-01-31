@@ -13,7 +13,9 @@ abap code backup
 
 ## 使用
 
-将程序直接拷贝到 SAP 系统中，运行即可
+> 基础功能的使用
+
+将程序 `zbackup4abap` 直接拷贝到 SAP 系统中，运行即可 [详情说明](./docs/backup4abap.md)
 
 ## 功能
 
