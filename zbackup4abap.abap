@@ -307,17 +307,17 @@ ENDFORM.
 FORM frm_get_code .
 
   IF p_prog = abap_true.
-    gv_parent_folder = `SE38\`.
+    gv_parent_folder = `SE38/`.
     PERFORM frm_get_report.
   ENDIF.
 
   IF p_func = abap_true.
-    gv_parent_folder = `SE37\`.
+    gv_parent_folder = `SE37/`.
     PERFORM frm_get_function.
   ENDIF.
 
   IF p_clas = abap_true.
-    gv_parent_folder = `SE24\`.
+    gv_parent_folder = `SE24/`.
     PERFORM frm_get_class.
   ENDIF.
 
@@ -330,27 +330,27 @@ ENDFORM.
 FORM frm_get_ddic .
 
   IF p_tabl = abap_true.
-    gv_parent_folder = `SE11\`.
+    gv_parent_folder = `SE11/`.
     IF p_txml = abap_true.
       PERFORM frm_get_tables.
     ELSE.
-      PERFORM frm_get_tables_ddl USING gr_zip gr_cover_out `SE11\DDL\TABLE\`.
-      PERFORM frm_get_structs_ddl USING gr_zip gr_cover_out `SE11\DDL\STRUCT\`.
+      PERFORM frm_get_tables_ddl USING gr_zip gr_cover_out `SE11/DDL/TABLE/`.
+      PERFORM frm_get_structs_ddl USING gr_zip gr_cover_out `SE11/DDL/STRUCT/`.
     ENDIF.
   ENDIF.
 
   IF p_cdsv = abap_true.
-    gv_parent_folder = `DDL\`.
+    gv_parent_folder = `DDL/`.
     PERFORM frm_get_ddl.
   ENDIF.
 
   IF p_doma = abap_true.
-    gv_parent_folder = `field\Domain\`.
+    gv_parent_folder = `field/Domain/`.
     PERFORM frm_get_domain.
   ENDIF.
 
   IF p_dtel = abap_true.
-    gv_parent_folder = `field\Element\`.
+    gv_parent_folder = `field/Element/`.
     PERFORM frm_get_element.
   ENDIF.
 
@@ -418,15 +418,15 @@ FORM frm_get_report .
     IF ls_list-subc = 'I'.
       IF lv_folder+0(1) = 'X'.
         " 特殊
-        lv_filename = |CMOD\\{ ls_list-progname }.{ gc_extension_name }|.
+        lv_filename = |CMOD/{ ls_list-progname }.{ gc_extension_name }|.
       ELSE.
         lv_filename = COND #( WHEN lv_folder IS NOT INITIAL
-                              THEN |{ lv_folder }\\| ).
-        lv_filename &&= |INCLUDE\\{ ls_list-progname }.{ gc_extension_name }|.
+                              THEN |{ lv_folder }/| ).
+        lv_filename &&= |INCLUDE/{ ls_list-progname }.{ gc_extension_name }|.
       ENDIF.
     ELSE.
       lv_filename = COND #( WHEN lv_folder IS NOT INITIAL
-                            THEN |{ lv_folder }\\| ).
+                            THEN |{ lv_folder }/| ).
       lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
     ENDIF.
 
@@ -558,7 +558,7 @@ FORM frm_get_function .
     PERFORM frm_get_folder_name USING 'F' ls_func-functionname lv_folder.
 
     IF lv_folder IS NOT INITIAL.
-      lv_filename = |{ lv_folder }\\{ ls_func-functionname }.abap|.
+      lv_filename = |{ lv_folder }/{ ls_func-functionname }.abap|.
     ELSE.
       CONCATENATE ls_func-functionname '.abap' INTO lv_filename.
     ENDIF.
@@ -649,11 +649,11 @@ FORM frm_get_function .
     lv_str_len = strlen( ls_list-progname ) - 3.
     CASE ls_list-progname+lv_str_len(1).
       WHEN 'V'.
-        lv_filename = gv_parent_folder && `Rfc\` && lv_filename.
+        lv_filename = gv_parent_folder && `Rfc/` && lv_filename.
       WHEN '$'.
-        lv_filename = gv_parent_folder && `Rfc\Unit\` && lv_filename.
+        lv_filename = gv_parent_folder && `Rfc/Unit/` && lv_filename.
       WHEN OTHERS.
-        lv_filename = gv_parent_folder && `More\` && lv_filename.
+        lv_filename = gv_parent_folder && `More/` && lv_filename.
     ENDCASE.
 
     " 日志 生成
@@ -771,7 +771,7 @@ ENDFORM.
 FORM frm_set_map_file USING VALUE(p_file_path)
                             VALUE(p_file_desc).
 
-  APPEND |<a href=".\\{ p_file_path }">{ p_file_desc }</a>| TO gt_map_file.
+  APPEND |<a href="./{ p_file_path }">{ p_file_desc }</a>| TO gt_map_file.
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_add_map_file
@@ -839,7 +839,7 @@ FORM frm_get_tables .
     PERFORM frm_get_folder_name USING 'T' ls_dd02l-tabname lv_folder.
 
     IF lv_folder IS INITIAL.
-      lv_filename = |{ lv_folder }\\{ ls_dd02l-tabname }.html|.
+      lv_filename = |{ lv_folder }/{ ls_dd02l-tabname }.html|.
     ELSE.
       CONCATENATE ls_dd02l-tabname '.html' INTO lv_filename.
     ENDIF.
@@ -1194,7 +1194,7 @@ FORM frm_get_class .
       IF sy-subrc = 0 AND lines( lt_source ) > ls_type-exline.
         lv_more = lv_filename.
         REPLACE FIRST OCCURRENCE OF |{ ls_class-clsname }.abap|
-           IN lv_more WITH |More\\{ ls_class-clsname }-{ ls_type-type }.abap|.
+           IN lv_more WITH |More/{ ls_class-clsname }-{ ls_type-type }.abap|.
 
         " map 文件路径
         PERFORM frm_set_map_file USING lv_filename ls_type-type.
@@ -1234,7 +1234,7 @@ FORM frm_get_logs .
   DATA: lv_filename TYPE string.
 
   " json
-  lv_filename = `logs\log_flow_` && sy-datum && `.json`.
+  lv_filename = `logs/log_flow_` && sy-datum && `.json`.
 
   GET REFERENCE OF gt_log_flow INTO DATA(lr_log_flow).
   DATA: lv_req_json TYPE string.
@@ -1332,7 +1332,7 @@ FORM frm_get_ddl .
     PERFORM frm_get_folder_name USING 'D' ls_ddl-ddlname lv_folder.
 
     IF lv_folder IS NOT INITIAL.
-      lv_filename = |{ lv_folder }\\{ ls_ddl-ddlname }.ddl|.
+      lv_filename = |{ lv_folder }/{ ls_ddl-ddlname }.ddl|.
     ELSE.
       CONCATENATE ls_ddl-ddlname '.ddl' INTO lv_filename.
     ENDIF.
@@ -1387,7 +1387,6 @@ FORM frm_get_more .
 
   IF s_pack[] IS INITIAL.
     " 更多 类
-    APPEND VALUE #( sign = 'I' option = 'EQ' low = 'CL_IM_PMMO_MD_PURREQ_CHG' ) TO gt_range_append_class.
 
   ENDIF.
 ENDFORM.
@@ -2172,7 +2171,7 @@ ENDFORM.
 FORM frm_get_others .
 
   IF p_smw0 = abap_true.
-    gv_parent_folder = `SMW0\`.
+    gv_parent_folder = `SMW0/`.
     " 由于文件名包含中文，设置编码格式为 UTF-8
     gr_zip->support_unicode_names = abap_true.
 
@@ -2182,10 +2181,10 @@ FORM frm_get_others .
     gr_zip->support_unicode_names = abap_false.
   ENDIF.
 
-  PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH\`.
+  PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH/`.
 
   " 结果存储
-  gv_parent_folder = `logs\flow\`.
+  gv_parent_folder = `logs/flow/`.
   PERFORM frm_get_logs.
 
   DATA: ls_blob TYPE demo_indx_blob.
