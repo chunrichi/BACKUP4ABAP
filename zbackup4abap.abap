@@ -168,6 +168,13 @@ SELECTION-SCREEN BEGIN OF BLOCK blck5 WITH FRAME.
   SELECTION-SCREEN END OF LINE.
 SELECTION-SCREEN END OF BLOCK blck5.
 
+" 标识用于 接口获取内容
+SELECTION-SCREEN BEGIN OF BLOCK brun WITH FRAME.
+  " __ 借用 blob 表存储 xstring 数据，读取后删除
+  "    同时为返回的文件名
+  PARAMETERS: p_brun TYPE char30 NO-DISPLAY.
+SELECTION-SCREEN END OF BLOCK brun.
+
 *&----------------------------------------------------------------------
 *                     Initialization
 *&----------------------------------------------------------------------
@@ -212,7 +219,10 @@ START-OF-SELECTION.
 
   PERFORM frm_init_variables.
 
-  PERFORM frm_get_path.
+  IF p_brun IS INITIAL.
+    " 不获取文件路径
+    PERFORM frm_get_path.
+  ENDIF.
 
   PERFORM frm_get_code.
   PERFORM frm_get_ddic.
@@ -709,21 +719,28 @@ FORM frm_export_zip .
 
   lv_xlen = xstrlen( lv_zip_xstr ).
 
-  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
-    EXPORTING
-      buffer        = lv_zip_xstr
-    IMPORTING
-      output_length = lv_xlen
-    TABLES
-      binary_tab    = lt_xdata.
+  " __接口获取时导入 blob表
 
-  CALL FUNCTION 'GUI_DOWNLOAD'
-    EXPORTING
-      bin_filesize = lv_xlen
-      filename     = gv_export_fullpath
-      filetype     = 'BIN'
-    TABLES
-      data_tab     = lt_xdata.
+  IF p_brun IS INITIAL.
+    CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+      EXPORTING
+        buffer        = lv_zip_xstr
+      IMPORTING
+        output_length = lv_xlen
+      TABLES
+        binary_tab    = lt_xdata.
+
+    CALL FUNCTION 'GUI_DOWNLOAD'
+      EXPORTING
+        bin_filesize = lv_xlen
+        filename     = gv_export_fullpath
+        filetype     = 'BIN'
+      TABLES
+        data_tab     = lt_xdata.
+  ELSE.
+    EXPORT xlen = lv_xlen
+           zip  = lv_zip_xstr TO DATABASE demo_indx_blob(zb) ID p_brun.
+  ENDIF.
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_get_path
