@@ -36,7 +36,7 @@ CLASS ZCL_BACKUP4ABAP_INTERFACE IMPLEMENTATION.
 
     DATA: lv_brun TYPE char30.
 
-    CONSTANTS: lv_backup_prog TYPE progname VALUE 'ZSLTEST01'.
+    CONSTANTS: lv_backup_prog TYPE progname VALUE 'ZBACKUP4ABAP'.
 
     " 检查请求方式
     DATA(lv_method) = server->request->get_method( ).
