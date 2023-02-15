@@ -142,6 +142,12 @@ SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
     PARAMETERS: p_dtel AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
+  " table type
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_ttyp FOR FIELD p_ttyp.
+    PARAMETERS: p_ttyp AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
 SELECTION-SCREEN END OF BLOCK blck2.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
@@ -229,7 +235,6 @@ START-OF-SELECTION.
 
   PERFORM frm_get_others.
 
-
   PERFORM frm_export_zip.
 
 *&---------------------------------------------------------------------*
@@ -250,6 +255,7 @@ FORM frm_init_text .
   t_cdsv = 'CDS视图'.
   t_doma = '数据域'.
   t_dtel = '数据元素'.
+  t_ttyp = '表类型'.
   t_smw0 = 'SMW0(Z*)附件'.
 
   t_pack = '开发类(包)'.
@@ -357,6 +363,11 @@ FORM frm_get_ddic .
   IF p_dtel = abap_true.
     gv_parent_folder = `SE11/field/Element/`.
     PERFORM frm_get_element.
+  ENDIF.
+
+  IF p_ttyp = abap_true.
+    gv_parent_folder = `SE11/TABLETYPE/`.
+    PERFORM frm_get_tabletypes.
   ENDIF.
 
 ENDFORM.
@@ -2451,6 +2462,133 @@ FORM frm_get_element .
     lv_source = /ui2/cl_json=>serialize( data = lo_elem
                                   pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
     CLEAR ls_elem.
+
+    lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+    " string -> xstring
+    gr_cover_out->convert(
+          EXPORTING data = lv_source
+          IMPORTING buffer = lv_xstring ).
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    " 清除缓存
+    CLEAR: lv_filename, lv_xstring, lv_source.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form FRM_GET_TABLETYPES_DDL
+*&---------------------------------------------------------------------*
+*&  获取表类型
+*&---------------------------------------------------------------------*
+FORM frm_get_tabletypes.
+  " 表类型     DD40L
+  " 表类型文本 DD40T
+
+  " 目的便于查看
+  TYPES: BEGIN OF ty_ttyp,
+           typename   TYPE dd40l-typename,
+           rowtype    TYPE dd40l-rowtype,
+           rowkind    TYPE dd40l-rowkind,
+           datatype   TYPE dd40l-datatype,
+           leng       TYPE dd40l-leng,
+           decimals   TYPE dd40l-decimals,
+           accessmode TYPE dd40l-accessmode,
+           keydef     TYPE dd40l-keydef,
+           keykind    TYPE dd40l-keykind,
+           keyfdcount TYPE dd40l-keyfdcount,
+           generic    TYPE dd40l-generic,
+           typelen    TYPE dd40l-typelen,
+           as4user    TYPE dd40l-as4user,
+           as4date    TYPE dd40l-as4date,
+           as4time    TYPE dd40l-as4time,
+           ddtext     TYPE dd40t-ddtext,
+         END OF ty_ttyp.
+
+  " rowkind => 'E'  基本类型\'S'  结构类型\'L'  表格类型\' ' 直接类型条目\'R' 参考类型\'D'  域
+
+  DATA: lv_filename TYPE string.
+
+  DATA: lt_source  TYPE TABLE OF text1000 WITH EMPTY KEY,
+        lv_source  TYPE string,
+        lv_xstring TYPE xstring.
+  DATA: ls_ttyp  TYPE ty_ttyp,
+        lv_tabix TYPE sytabix.
+
+  " 数据获取
+  SELECT
+    dd~typename,
+    dd~rowtype,
+    dd~rowkind,
+    dd~datatype,
+    dd~leng,
+    dd~decimals,
+    dd~accessmode,
+    dd~keydef,
+    dd~keykind,
+    dd~keyfdcount,
+    dd~generic,
+    dd~typelen,
+    dd~as4user,
+    dd~as4date,
+    dd~as4time,
+    dt~ddtext
+    FROM dd40l AS dd
+    INNER JOIN tadir AS ta ON dd~typename = ta~obj_name
+    LEFT JOIN dd40t AS dt ON dt~typename = dd~typename AND dt~ddlanguage = @sy-langu
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object = 'TTYP'
+      AND ta~devclass IN @gt_range_devclass
+      AND dd~as4local = 'A'
+      AND dd~typename  LIKE 'Z%'
+    INTO TABLE @DATA(lt_dd40l).
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'TTYP' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'TTYP' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  LOOP AT lt_dd40l INTO DATA(ls_dd40).
+    lv_filename = ls_dd40-typename && '.json'.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_dd40-ddtext.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'DTEL' ls_dd40-typename ls_dd40-as4user ls_dd40-as4date ls_dd40-as4time.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_dd40-as4date
+        OR ( ls_delt_log-ddate = ls_dd40-as4date AND ls_delt_log-dtime > ls_dd40-as4time ).
+        REFRESH lt_source.
+        CLEAR: lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 生成 json 文件
+    MOVE-CORRESPONDING ls_dd40 TO ls_ttyp.
+
+    GET REFERENCE OF ls_ttyp INTO DATA(lo_ttyp).
+
+    lv_source = /ui2/cl_json=>serialize( data = lo_ttyp
+                                  pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+    CLEAR ls_ttyp.
 
     lv_source = lcl_pretty_json=>pretty( lv_source ).
 
