@@ -1831,6 +1831,8 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
               <ls_field>-type = |abap.{ ls_dd03l-datatype CASE = LOWER }({ CONV i( ls_dd03l-leng ) },{  CONV i( ls_dd03l-decimals ) })|.
             WHEN 'STRG'.
               <ls_field>-type = |abap.string({ CONV i( ls_dd03l-leng ) })|.
+            WHEN 'INT4' OR 'INT1' OR 'INT2' OR 'INT8'.
+              <ls_field>-type = |abap.{ ls_dd03l-datatype CASE = LOWER }|.
             WHEN OTHERS.
               <ls_field>-type = ls_dd03l-datatype && '-' && ls_dd03l-leng.
           ENDCASE.
