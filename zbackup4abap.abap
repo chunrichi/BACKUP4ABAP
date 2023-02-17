@@ -870,7 +870,8 @@ FORM frm_get_class .
     clsfinal,
     r3release,
     changedby,
-    changedon
+    changedon,
+    CAST( '000000' AS TIMS ) AS changetm
     FROM vseoclass AS ss
     INNER JOIN tadir AS ta ON ta~obj_name = ss~clsname
     WHERE "langu = @sy-langu " 语言会限制内容
@@ -915,17 +916,20 @@ FORM frm_get_class .
                               ( sign = 'I' option = 'CP' low = |{ itm-clsname }*| ) ).
   IF lt_range_name IS NOT INITIAL.
     SELECT
-      name,
+      progname AS name,
       unam,
-      udat
-      FROM progdir
-      WHERE name IN @lt_range_name
+      udat,
+      utime
+      FROM reposrc
+      WHERE progname IN @lt_range_name
       INTO TABLE @DATA(lt_progdir).
 
     LOOP AT lt_progdir ASSIGNING FIELD-SYMBOL(<ls_progdir>).
-      <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=+.*$` with = `` occ = -1 ).
+      " __ 当名称足够长时 无标识 `=` 正则无效
+      " <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=+.*$` with = `` occ = -1 ).
+      <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=*(?:CCAU|CCDEF|CCIMP|CCMAC|CI|CM\d{3}|CO|CP|CS|CT|CU)$` with = `` occ = -1 ).
     ENDLOOP.
-    SORT lt_progdir BY name udat DESCENDING.
+    SORT lt_progdir BY name udat DESCENDING utime DESCENDING.
   ENDIF.
   " <--
 
@@ -985,21 +989,24 @@ FORM frm_get_class .
     lv_filename = gv_parent_folder && lv_filename.
 
     " 真实修改时间
-    IF ls_class-changedon IS INITIAL.
-      READ TABLE lt_progdir INTO DATA(ls_prodir_udat) WITH KEY name = ls_class-clsname BINARY SEARCH.
-      IF sy-subrc = 0.
+    READ TABLE lt_progdir INTO DATA(ls_prodir_udat) WITH KEY name = ls_class-clsname BINARY SEARCH.
+    IF sy-subrc = 0.
+      IF ls_class-changedon IS INITIAL OR ls_prodir_udat-udat > ls_class-changedon.
         ls_class-changedon = ls_prodir_udat-udat.
-        ls_class-changedby = ls_prodir_udat-unam.
       ENDIF.
+      ls_class-changedby = ls_prodir_udat-unam.
+      ls_class-changetm  = ls_prodir_udat-utime.
     ENDIF.
 
+
     " 日志 生成
-    PERFORM frm_set_log_flow USING 'CLASS' ls_class-clsname ls_class-changedby ls_class-changedon '00000000'.
+    PERFORM frm_set_log_flow USING 'CLASS' ls_class-clsname ls_class-changedby ls_class-changedon ls_class-changetm.
 
     " 检查增量
     IF p_delt = 'X'.
-      IF ls_delt_log-ddate > ls_class-changedon.
-        REFRESH lt_str.
+      IF ls_delt_log-ddate > ls_class-changedon
+        OR ( ls_delt_log-ddate = ls_class-changedon AND ls_delt_log-dtime > ls_class-changetm ).
+        REFRESH lt_source.
         CLEAR: lv_filename, lv_xstring.
 
         CONTINUE.
