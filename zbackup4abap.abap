@@ -153,9 +153,16 @@ SELECTION-SCREEN END OF BLOCK blck2.
 SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
   " 其他
 
+  " Smw0
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_smw0 FOR FIELD p_smw0.
     PARAMETERS: p_smw0 AS CHECKBOX DEFAULT ''.
+  SELECTION-SCREEN END OF LINE.
+
+  " Tcode
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_tran FOR FIELD p_tran.
+    PARAMETERS: p_tran AS CHECKBOX DEFAULT ''.
   SELECTION-SCREEN END OF LINE.
 
 SELECTION-SCREEN END OF BLOCK blck3.
@@ -257,6 +264,7 @@ FORM frm_init_text .
   t_dtel = '数据元素'.
   t_ttyp = '表类型'.
   t_smw0 = 'SMW0(Z*)附件'.
+  t_tran = '事务码'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -2446,6 +2454,12 @@ FORM frm_get_others .
     gr_zip->support_unicode_names = abap_false.
   ENDIF.
 
+  IF p_tran = abap_true.
+    gv_parent_folder = `TCODE/`.
+
+    PERFORM frm_get_tcode.
+  ENDIF.
+
   PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH/`.
 
   " 结果存储
@@ -2568,6 +2582,95 @@ FORM frm_get_smw0 .
     REFRESH lt_mime.
     CLEAR: lv_filename, lv_xstring, lv_size.
   ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_tcode
+*&---------------------------------------------------------------------*
+*&  事务码
+*&---------------------------------------------------------------------*
+FORM frm_get_tcode .
+
+  " 事务码 tstc
+
+  " 事务码
+  " 目的便于查看与还原
+  TYPES: BEGIN OF ty_tran,
+           tcode TYPE tstc-tcode,
+           pgmna TYPE tstc-pgmna,
+           dypno TYPE tstc-dypno,
+           menue TYPE tstc-menue,
+           cinfo TYPE tstc-cinfo,
+           arbgb TYPE tstc-arbgb,
+           ttext TYPE tstct-ttext,
+           param TYPE tstcp-param,
+         END OF ty_tran.
+
+  DATA: lv_filename TYPE string.
+
+  DATA: lt_source  TYPE TABLE OF text1000 WITH EMPTY KEY,
+        lv_source  TYPE string,
+        lv_xstring TYPE xstring.
+  DATA: ls_tran  TYPE ty_tran,
+        lt_tran  TYPE TABLE OF ty_tran,
+        lv_tabix TYPE sytabix.
+
+  " 数据获取
+  SELECT
+    tc~tcode,
+    tc~pgmna,
+    tc~dypno,
+    tc~menue,
+    tc~cinfo,
+    tc~arbgb,
+    tt~ttext,
+    tp~param
+    FROM tstc AS tc
+    INNER JOIN tadir AS ta ON tc~tcode = ta~obj_name
+    LEFT JOIN tstcp AS tp ON tp~tcode = tc~tcode
+    LEFT JOIN tstct AS tt ON tt~tcode = tc~tcode AND tt~sprsl = @sy-langu
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object = 'TRAN'
+      AND ta~devclass IN @gt_range_devclass
+      AND tc~tcode LIKE 'Z%'
+    INTO TABLE @DATA(lt_tstc).
+
+  LOOP AT lt_tstc INTO DATA(ls_tstc).
+    " 生成 json 文件
+    MOVE-CORRESPONDING ls_tstc TO ls_tran.
+
+    APPEND ls_tran TO lt_tran.
+    CLEAR ls_tran.
+  ENDLOOP.
+
+  lv_filename = `TCode` && '.json'.
+
+  lv_filename = gv_parent_folder && lv_filename.
+
+  " map 文件路径
+  PERFORM frm_set_map_file USING lv_filename '事务码目录'.
+
+  GET REFERENCE OF lt_tran INTO DATA(lo_tran).
+
+  lv_source = /ui2/cl_json=>serialize( data = lo_tran
+                                pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+
+  lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+  " string -> xstring
+  gr_cover_out->convert(
+        EXPORTING data = lv_source
+        IMPORTING buffer = lv_xstring ).
+
+  " 添加到压缩包
+  gr_zip->add( name    = lv_filename
+               content = lv_xstring ).
+
+  " 清除缓存
+  CLEAR: lv_filename, lv_xstring, lv_source.
 
   " map 文件
   PERFORM frm_add_map_file USING gv_parent_folder.
