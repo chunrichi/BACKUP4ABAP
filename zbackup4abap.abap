@@ -1952,9 +1952,9 @@ FORM frm_get_folder_name USING p_type TYPE char2
       lv_regex = `(MG|[RB]|M)_`.
 
       SPLIT lv_name AT '_' INTO TABLE DATA(lt_split_name).
-      IF sy-subrc <> 0.
-        RETURN.
-      ENDIF.
+      " IF sy-subrc <> 0.
+      "   RETURN.
+      " ENDIF.
 
       IF lines( lt_split_name ) <> 1.
         READ TABLE lt_split_name INTO DATA(lv_split_name) INDEX 1.
