@@ -165,6 +165,12 @@ SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
     PARAMETERS: p_tran AS CHECKBOX DEFAULT ''.
   SELECTION-SCREEN END OF LINE.
 
+  " Strans
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_xslt FOR FIELD p_xslt.
+    PARAMETERS: p_xslt AS CHECKBOX DEFAULT ''.
+  SELECTION-SCREEN END OF LINE.
+
 SELECTION-SCREEN END OF BLOCK blck3.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
@@ -265,6 +271,7 @@ FORM frm_init_text .
   t_ttyp = '表类型'.
   t_smw0 = 'SMW0(Z*)附件'.
   t_tran = '事务码'.
+  t_xslt = '转换'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -2469,6 +2476,12 @@ FORM frm_get_others .
     PERFORM frm_get_tcode.
   ENDIF.
 
+  IF p_xslt = abap_true.
+    PERFORM frm_set_parent_folder USING `STRANS/`.
+
+    PERFORM frm_get_strans.
+  ENDIF.
+
   PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH/`.
 
   " 结果存储
@@ -2685,7 +2698,76 @@ FORM frm_get_tcode .
   PERFORM frm_add_map_file USING gv_parent_folder.
 
 ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_STRANS
+*&---------------------------------------------------------------------*
+*& 获取转换
+*&---------------------------------------------------------------------*
+FORM frm_get_strans .
 
+  " 内容表 O2XSLTDESC
+  " 描述   O2XSLTTEXT
+
+  DATA: lv_xstr_xslt TYPE xstring.
+  DATA: lt_tline TYPE TABLE OF abaptxt255.
+
+  DATA: lv_source  TYPE string,
+        lv_xstring TYPE xstring.
+
+  DATA: lv_filename TYPE string.
+
+  SELECT
+    o2~xsltdesc,
+    o2~srtf2,
+    o2~clustr,
+    o2~clustd
+    FROM tadir AS ta
+    INNER JOIN o2xsltdesc AS o2 ON ta~obj_name = o2~xsltdesc
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object = 'XSLT'
+      AND ta~obj_name LIKE 'Z%'
+      AND ta~devclass IN @gt_range_devclass
+      AND o2~state = 'A'
+      AND o2~relid = 'TR'
+    INTO TABLE @DATA(lt_xslt).
+
+  CHECK lt_xslt IS NOT INITIAL.
+
+  SORT lt_xslt BY xsltdesc srtf2.
+
+  LOOP AT lt_xslt ASSIGNING FIELD-SYMBOL(<ls_xslt>).
+    lv_xstr_xslt &&= <ls_xslt>-clustd.
+
+    AT END OF xsltdesc.
+      IMPORT xsltdesc = lt_tline FROM DATA BUFFER lv_xstr_xslt.
+
+      IF lt_tline IS NOT INITIAL.
+
+        CONCATENATE LINES OF lt_tline INTO lv_source SEPARATED BY gc_newline.
+
+        lv_filename = <ls_xslt>-xsltdesc && '.xsd'.
+
+        lv_filename = gv_parent_folder && lv_filename.
+
+        " string -> xstring
+        gr_cover_out->convert(
+              EXPORTING data = lv_source
+              IMPORTING buffer = lv_xstring ).
+
+        " 添加到压缩包
+        gr_zip->add( name    = lv_filename
+                     content = lv_xstring ).
+
+        " 清除缓存
+        CLEAR: lv_filename, lv_xstring, lv_source.
+      ENDIF.
+
+      CLEAR: lt_tline[], lv_xstr_xslt.
+    ENDAT.
+
+  ENDLOOP.
+
+ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_set_parent_folder
 *&---------------------------------------------------------------------*
