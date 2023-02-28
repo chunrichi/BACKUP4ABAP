@@ -326,17 +326,17 @@ ENDFORM.
 FORM frm_get_code .
 
   IF p_prog = abap_true.
-    gv_parent_folder = `SE38/`.
+    PERFORM frm_set_parent_folder USING `SE38/`.
     PERFORM frm_get_report.
   ENDIF.
 
   IF p_func = abap_true.
-    gv_parent_folder = `SE37/`.
+    PERFORM frm_set_parent_folder USING `SE37/`.
     PERFORM frm_get_function.
   ENDIF.
 
   IF p_clas = abap_true.
-    gv_parent_folder = `SE24/`.
+    PERFORM frm_set_parent_folder USING `SE24/`.
     PERFORM frm_get_class.
   ENDIF.
 
@@ -349,7 +349,7 @@ ENDFORM.
 FORM frm_get_ddic .
 
   IF p_tabl = abap_true.
-    gv_parent_folder = `SE11/`.
+    "PERFORM frm_set_parent_folder USING `SE11/`.
     IF p_txml = abap_true.
       " no realization
     ELSE.
@@ -360,22 +360,22 @@ FORM frm_get_ddic .
   ENDIF.
 
   IF p_cdsv = abap_true.
-    gv_parent_folder = `DDL/`.
+    PERFORM frm_set_parent_folder USING `DDL/`.
     PERFORM frm_get_ddl.
   ENDIF.
 
   IF p_doma = abap_true.
-    gv_parent_folder = `SE11/field/Domain/`.
+    PERFORM frm_set_parent_folder USING `SE11/field/Domain/`.
     PERFORM frm_get_domain.
   ENDIF.
 
   IF p_dtel = abap_true.
-    gv_parent_folder = `SE11/field/Element/`.
+    PERFORM frm_set_parent_folder USING `SE11/field/Element/`.
     PERFORM frm_get_element.
   ENDIF.
 
   IF p_ttyp = abap_true.
-    gv_parent_folder = `SE11/TABLETYPE/`.
+    PERFORM frm_set_parent_folder USING `SE11/TABLETYPE/`.
     PERFORM frm_get_tabletypes.
   ENDIF.
 
@@ -1591,6 +1591,8 @@ FORM frm_get_tables_ddl USING pr_zip TYPE REF TO cl_abap_zip
   CHECK pr_zip IS NOT INITIAL
     AND pr_cover_out IS NOT INITIAL.
 
+  PERFORM frm_set_parent_folder USING p_filename.
+
   DATA: lr_ddl TYPE REF TO lcl_export_ddldict.
 
   lr_ddl = NEW lcl_export_ddldict( ).
@@ -2451,7 +2453,7 @@ ENDFORM.
 FORM frm_get_others .
 
   IF p_smw0 = abap_true.
-    gv_parent_folder = `SMW0/`.
+    PERFORM frm_set_parent_folder USING `SMW0/`.
     " 由于文件名包含中文，设置编码格式为 UTF-8
     gr_zip->support_unicode_names = abap_true.
 
@@ -2462,7 +2464,7 @@ FORM frm_get_others .
   ENDIF.
 
   IF p_tran = abap_true.
-    gv_parent_folder = `TCODE/`.
+    PERFORM frm_set_parent_folder USING `TCODE/`.
 
     PERFORM frm_get_tcode.
   ENDIF.
@@ -2681,5 +2683,16 @@ FORM frm_get_tcode .
 
   " map 文件
   PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form frm_set_parent_folder
+*&---------------------------------------------------------------------*
+*& 设置父层目录
+*&---------------------------------------------------------------------*
+FORM frm_set_parent_folder  USING p_folder.
+
+  gv_parent_folder = p_folder.
 
 ENDFORM.
