@@ -132,7 +132,7 @@ func main() {
 	UzipTime := time.Now()
 
 	// 解压
-	err = util.DeCompressed(filename)
+	err = util.DeCompressed(filename, set.ProcessBar)
 	if err != nil {
 		fmt.Println(err)
 		return

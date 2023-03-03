@@ -8,7 +8,9 @@ import (
 	"strings"
 )
 
-func DeCompressed(src string) error {
+var probar Bar
+
+func DeCompressed(src string, procBar bool) error {
 	ZipReader, err := zip.OpenReader(src)
 	if err != nil {
 		return err
@@ -16,16 +18,29 @@ func DeCompressed(src string) error {
 
 	defer ZipReader.Close()
 
+	fmt.Printf("解压数量:%6v\n", len(ZipReader.File))
+
+	if procBar {
+		probar.Init(int64(len(ZipReader.File)), "")
+	}
+
 	for _, f := range ZipReader.File {
 		if err := deCompressed(f); err != nil {
 			return err
 		}
 	}
+
+	probar.End()
+
 	return nil
 }
 
 func deCompressed(f *zip.File) error {
-	fmt.Println(f.Name)
+	if probar.IsInit {
+		probar.Add(f.Name)
+	} else {
+		fmt.Println(f.Name)
+	}
 
 	if f.FileInfo().IsDir() {
 		err := os.MkdirAll(f.Name, 0755)
