@@ -5,105 +5,128 @@
 *&---------------------------------------------------------------------*
 REPORT prettyjson_test.
 
-DATA: json TYPE string.
+" 参考 https://juejin.cn/post/6844904084852457486
 
-*json = `{"rollname":"ZZED_AGENTID","domname":"TEXT12","as4user":"22443","as4date":` &&
+CLASS lcl_pretty_json DEFINITION.
+
+  PUBLIC SECTION.
+
+    CLASS-METHODS: pretty IMPORTING json               TYPE string
+                          RETURNING VALUE(pretty_json) TYPE string.
+
+ENDCLASS.
+
+CLASS lcl_pretty_json IMPLEMENTATION.
+
+  METHOD pretty.
+    " 匹配数量
+    DATA: invalidfs TYPE i,
+          invalidbs TYPE i.
+
+    DATA: lv_loff TYPE i,  " 上次开始位置
+          l_alen  TYPE i.  " 匹配开始位置
+
+    " 匹配内容
+    DATA: l_exec TYPE string,
+          l_indx TYPE i,
+          l_ftc  TYPE string.
+
+    " 缩进计算
+    DATA: keytimesf        TYPE i,
+          keytimesb        TYPE i,
+          indentationtimes TYPE i.
+
+    DATA: ls_result TYPE match_result.
+
+    FIND ALL OCCURRENCES OF REGEX `\{|\}|,|:` IN json
+      RESULTS DATA(results).
+
+    IF results IS INITIAL.
+      pretty_json = json.
+      RETURN.
+    ELSE.
+
+      LOOP AT results INTO ls_result.
+        l_exec = json+ls_result-offset(ls_result-length).
+
+        l_indx = ls_result-offset + ls_result-length.
+
+        " 匹配开头到当前字符串之间的字符传
+        l_ftc = json+0(ls_result-offset).
+
+        " replace all occurrences of regex `"` in ftc with ``.
+        REPLACE ALL OCCURRENCES OF REGEX `[^"]` IN l_ftc WITH ``.
+        IF strlen( l_ftc ) MOD 2 <> 0.
+
+          IF l_exec+0(1) = `{`.
+            invalidfs += 1.
+          ELSEIF l_exec+0(1) = `}`.
+            invalidbs += 1.
+          ELSE.
+            CONTINUE.
+          ENDIF.
+
+        ENDIF.
+
+
+        REPLACE ALL OCCURRENCES OF REGEX `[^{]` IN l_ftc WITH ``.
+        keytimesf = strlen( l_ftc ) - invalidfs.
+
+        REPLACE ALL OCCURRENCES OF REGEX `[^}]` IN l_ftc WITH ``.
+        keytimesb = strlen( l_ftc ) - invalidbs.
+
+        indentationtimes = keytimesf - keytimesb.
+
+        l_alen = ls_result-offset + ls_result-length - lv_loff.
+
+        IF l_exec+0(1) = '{'.
+          CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          DO indentationtimes TIMES.
+            CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
+          ENDDO.
+        ELSEIF l_exec+0(1) = '}'.
+          l_alen = l_alen - 1.
+          CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          DO indentationtimes TIMES.
+            CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
+          ENDDO.
+        ELSEIF l_exec+0(1) = ','.
+          CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          DO indentationtimes TIMES.
+            CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
+          ENDDO.
+        ELSEIF l_exec+0(1) = ':'.
+          CONCATENATE pretty_json json+lv_loff(l_alen) ` ` INTO pretty_json RESPECTING BLANKS.
+        ENDIF.
+
+        lv_loff = ls_result-offset + ls_result-length.
+
+      ENDLOOP.
+      IF sy-subrc = 0.
+        lv_loff -= 1.
+
+        CONCATENATE pretty_json json+lv_loff INTO pretty_json.
+      ENDIF.
+
+    ENDIF.
+
+  ENDMETHOD.
+
+ENDCLASS.
+
+START-OF-SELECTION.
+
+  DATA: lv_json TYPE string.
+
+*lv_json = `{"rollname":"ZZED_AGENTID","domname":"TEXT12","as4user":"22443","as4date":` &&
 *             `"2022-10-29","as4time":"13:52:41","datatype":"CHAR","leng":12,"decimals":0,` &&
 *             `"outputlen":12,"lowercase":"X","convexit":"","entitytab":"","refkind":"D",` &&
 *             `"ddtext":"AgentId","reptext":"AgentId","scrtextS":"AgentId","scrtextM":"AgentId","scrtextL":"AgentId"}`.
 
-json = `{ "as4time":"13:52:41" }`.
+  lv_json = `{ "as4time":"13:52:41" }`.
 
-DATA: rjson TYPE string.
+  DATA: lv_rjson TYPE string.
 
-" 参考 https://juejin.cn/post/6844904084852457486
+  lv_rjson = lcl_pretty_json=>pretty( lv_json ).
 
-DATA(invalidfs) = 0.
-DATA(invalidbs) = 0.
-
-DATA: lv_loff TYPE i, " 上次开始位置
-      lv_alen TYPE i. " 匹配开始位置
-
-
-" TABLE OF MATCH_RESULT
-
-FIND ALL OCCURRENCES OF REGEX `\{|\}|,|:` IN json
-  RESULTS DATA(results).
-
-
-LOOP AT results INTO DATA(ls_result).
-  DATA(l_off) = ls_result-offset.
-  DATA(l_len) = ls_result-length.
-
-  DATA(lv_exec) = json+l_off(l_len).
-
-  DATA(l_indx) = l_off + l_len.
-
-  " 匹配开头到当前字符串之间的字符串
-  DATA(ftc) = json+0(l_indx).
-
-  "
-*  REPLACE ALL OCCURRENCES OF REGEX `"` IN ftc WITH ``.
-  REPLACE ALL OCCURRENCES OF REGEX `[^"]` IN ftc WITH ``.
-  IF strlen( ftc ) MOD 2 <> 0.
-
-    IF lv_exec+0(1) = `{`.
-      invalidfs += 1.
-    ELSEIF lv_exec+0(1) = `}`.
-      invalidbs += 1.
-    ELSE.
-      CONTINUE.
-    ENDIF.
-
-  ENDIF.
-
-  " 计算缩进
-  DATA(keytimesf) = 0.
-  DATA(keytimesb) = 0.
-
-  REPLACE ALL OCCURRENCES OF REGEX `[^{]` IN ftc WITH ``.
-  keytimesf = strlen( ftc ) - invalidfs.
-
-  REPLACE ALL OCCURRENCES OF REGEX `[^}]` IN ftc WITH ``.
-  keytimesb = strlen( ftc ) - invalidbs.
-
-  DATA(indentationtimes) = keytimesf - keytimesb.
-
-  DATA(l_alen) = l_off + l_len - lv_loff.
-
-  DATA: lv_json TYPE string.
-
-  IF lv_exec+0(1) = '{'.
-*    l_alen += 1.
-    rjson &&= json+lv_loff(l_alen) && cl_abap_char_utilities=>cr_lf.
-    DO indentationtimes TIMES.
-      CONCATENATE rjson `  ` INTO rjson RESPECTING BLANKS.
-    ENDDO.
-    "lv_json &&= json+l_alen.
-  ELSEIF lv_exec+0(1) = '}'.
-    l_alen -= 1.
-    rjson &&= json+lv_loff(l_alen) && cl_abap_char_utilities=>cr_lf.
-    DO indentationtimes TIMES.
-      CONCATENATE rjson `  ` INTO rjson RESPECTING BLANKS.
-    ENDDO.
-    "lv_json &&= json+l_alen.
-  ELSEIF lv_exec+0(1) = ','.
-*    l_alen += 1.
-    rjson &&= json+lv_loff(l_alen) && cl_abap_char_utilities=>cr_lf.
-    DO indentationtimes TIMES.
-      CONCATENATE rjson `  ` INTO rjson RESPECTING BLANKS.
-    ENDDO.
-    "lv_json &&= json+l_alen.
-  ELSEIF lv_exec+0(1) = ':'.
-    rjson &&= json+lv_loff(l_alen) && ` `." && json+l_alen.
-  ENDIF.
-
-  lv_loff = l_off + l_len.
-ENDLOOP.
-IF sy-subrc = 0.
-  lv_loff -= 1.
-  rjson &&= json+lv_loff.
-ENDIF.
-
-
-cl_demo_output=>display( rjson ).
+  cl_demo_output=>display( lv_rjson ).
