@@ -13,10 +13,11 @@ import (
 const ConfigFileName string = "config.json"
 
 type Set struct {
-	SapSever  string
-	Username  string
-	Password  string
-	AutoUnZip bool
+	SapSever   string
+	Username   string
+	Password   string
+	AutoUnZip  bool
+	ProcessBar bool
 }
 
 func (set Set) IsEmpty() bool {
@@ -109,21 +110,12 @@ func settingProcess(set *Set) error {
 	fmt.Scanln(&set.Password)
 
 	// 是否自动解压
-	var autoUnZip string
+	set.AutoUnZip = yesOrNo("是否自动解压到当前文件夹", true)
 
-	autoUnZip = "y"
+	// 是否启用进度条
+	set.ProcessBar = yesOrNo("是否启用进度条（不显示详情）", true)
 
-	fmt.Print("\n是否自动解压到当前文件夹(y/n):")
-	fmt.Scanln(&autoUnZip)
-
-	autoUnZip = strings.ToLower(autoUnZip)
-	autoUnZip = strings.TrimSpace(autoUnZip)
-
-	if autoUnZip[:1] == "y" {
-		set.AutoUnZip = true
-	} else {
-		set.AutoUnZip = false
-	}
+	fmt.Println()
 
 	return nil
 }
@@ -136,4 +128,25 @@ func checkHttpUrl(url string) error {
 	}
 
 	return nil
+}
+
+func yesOrNo(choeseDest string, defBool bool) bool {
+	var boolChoese string
+
+	if defBool {
+		boolChoese = "y"
+	}
+
+	fmt.Printf("\n%s(y/n)", choeseDest)
+	fmt.Scanln(&boolChoese)
+
+	boolChoese = strings.ToLower(boolChoese)
+	boolChoese = strings.TrimSpace(boolChoese)
+
+	if boolChoese[:1] == "y" {
+		return true
+	} else {
+		return false
+	}
+
 }
