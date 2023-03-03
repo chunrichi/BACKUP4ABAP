@@ -109,21 +109,12 @@ func settingProcess(set *Set) error {
 	fmt.Scanln(&set.Password)
 
 	// 是否自动解压
-	var autoUnZip string
+	set.AutoUnZip = yesOrNo("是否自动解压到当前文件夹", true)
 
-	autoUnZip = "y"
 
-	fmt.Print("\n是否自动解压到当前文件夹(y/n):")
-	fmt.Scanln(&autoUnZip)
 
-	autoUnZip = strings.ToLower(autoUnZip)
-	autoUnZip = strings.TrimSpace(autoUnZip)
 
-	if autoUnZip[:1] == "y" {
-		set.AutoUnZip = true
-	} else {
-		set.AutoUnZip = false
-	}
+
 
 	return nil
 }
@@ -136,4 +127,25 @@ func checkHttpUrl(url string) error {
 	}
 
 	return nil
+}
+
+func yesOrNo(choeseDest string, defBool bool) bool {
+	var boolChoese string
+
+	if defBool {
+		boolChoese = "y"
+	}
+
+	fmt.Printf("\n%s(y/n)", choeseDest)
+	fmt.Scanln(&boolChoese)
+
+	boolChoese = strings.ToLower(boolChoese)
+	boolChoese = strings.TrimSpace(boolChoese)
+
+	if boolChoese[:1] == "y" {
+		return true
+	} else {
+		return false
+	}
+
 }
