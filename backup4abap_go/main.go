@@ -36,7 +36,7 @@ func main() {
 	delta = "YES"
 
 	if set.AutoUnZip == false {
-		fmt.Print("是否增量?(Yes/No) 默认 Yes:")
+		fmt.Print("\t程序下载\n是否增量?(Yes/No) 默认 Yes:")
 		fmt.Scanln(&delta)
 	}
 
@@ -129,12 +129,17 @@ func main() {
 		return
 	}
 
+	UzipTime := time.Now()
+
 	// 解压
 	err = util.DeCompressed(filename)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+
+	useTime = time.Since(UzipTime)
+	fmt.Printf("\nUzip Cost Time: %s\n", useTime)
 
 	// 删除文件
 	err = os.Remove(filename)
