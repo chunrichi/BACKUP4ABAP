@@ -13,10 +13,11 @@ import (
 const ConfigFileName string = "config.json"
 
 type Set struct {
-	SapSever  string
-	Username  string
-	Password  string
-	AutoUnZip bool
+	SapSever   string
+	Username   string
+	Password   string
+	AutoUnZip  bool
+	ProcessBar bool
 }
 
 func (set Set) IsEmpty() bool {
@@ -111,10 +112,10 @@ func settingProcess(set *Set) error {
 	// 是否自动解压
 	set.AutoUnZip = yesOrNo("是否自动解压到当前文件夹", true)
 
+	// 是否启用进度条
+	set.ProcessBar = yesOrNo("是否启用进度条（不显示详情）", true)
 
-
-
-
+	fmt.Println()
 
 	return nil
 }
