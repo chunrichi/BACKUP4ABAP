@@ -47,14 +47,16 @@ CLASS lcl_pretty_json IMPLEMENTATION.
     ELSE.
 
       LOOP AT results INTO ls_result.
+        l_alen = ls_result-offset + ls_result-length - lv_loff.
+
         l_exec = json+ls_result-offset(ls_result-length).
 
         l_indx = ls_result-offset + ls_result-length.
 
-        " 匹配开头到当前字符串之间的字符传
-        l_ftc = json+0(ls_result-offset).
+        " 匹配开头到当前字符串之间的字符串
+        l_ftc = json+0(l_indx).
 
-        " replace all occurrences of regex `"` in ftc with ``.
+        REPLACE ALL OCCURRENCES OF REGEX `\\"` IN l_ftc WITH ``.
         REPLACE ALL OCCURRENCES OF REGEX `[^"]` IN l_ftc WITH ``.
         IF strlen( l_ftc ) MOD 2 <> 0.
 
@@ -62,22 +64,24 @@ CLASS lcl_pretty_json IMPLEMENTATION.
             invalidfs += 1.
           ELSEIF l_exec+0(1) = `}`.
             invalidbs += 1.
-          ELSE.
-            CONTINUE.
           ENDIF.
 
+          CONTINUE.
         ENDIF.
 
+        " 匹配开头到当前字符串之间的字符串
+        l_ftc = json+0(l_indx).
 
         REPLACE ALL OCCURRENCES OF REGEX `[^{]` IN l_ftc WITH ``.
         keytimesf = strlen( l_ftc ) - invalidfs.
+
+        " 匹配开头到当前字符串之间的字符串
+        l_ftc = json+0(l_indx).
 
         REPLACE ALL OCCURRENCES OF REGEX `[^}]` IN l_ftc WITH ``.
         keytimesb = strlen( l_ftc ) - invalidbs.
 
         indentationtimes = keytimesf - keytimesb.
-
-        l_alen = ls_result-offset + ls_result-length - lv_loff.
 
         IF l_exec+0(1) = '{'.
           CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
@@ -87,9 +91,12 @@ CLASS lcl_pretty_json IMPLEMENTATION.
         ELSEIF l_exec+0(1) = '}'.
           l_alen = l_alen - 1.
           CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          " CONCATENATE pretty_json json+lv_loff(l_alen) INTO pretty_json RESPECTING BLANKS.
           DO indentationtimes TIMES.
             CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
           ENDDO.
+
+          CONCATENATE pretty_json '}' INTO pretty_json.
         ELSEIF l_exec+0(1) = ','.
           CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
           DO indentationtimes TIMES.
@@ -103,9 +110,9 @@ CLASS lcl_pretty_json IMPLEMENTATION.
 
       ENDLOOP.
       IF sy-subrc = 0.
-        lv_loff -= 1.
-
-        CONCATENATE pretty_json json+lv_loff INTO pretty_json.
+*        lv_loff -= 1.
+*
+*        CONCATENATE pretty_json json+lv_loff INTO pretty_json.
       ENDIF.
 
     ENDIF.
@@ -123,7 +130,9 @@ START-OF-SELECTION.
 *             `"outputlen":12,"lowercase":"X","convexit":"","entitytab":"","refkind":"D",` &&
 *             `"ddtext":"AgentId","reptext":"AgentId","scrtextS":"AgentId","scrtextM":"AgentId","scrtextL":"AgentId"}`.
 
-  lv_json = `{ "as4time":"13:52:41" }`.
+*  lv_json = `{ "as4time":"13:52:41" }`.
+
+  lv_json = `{"uu{{{{{{::}},}uc\\\"u":"kkkk","oooooo":{},"pp2":{"662":{"****":9},"k":88888},"c___9":true,"*":3}`.
 
   DATA: lv_rjson TYPE string.
 
