@@ -53,7 +53,7 @@ TYPES: BEGIN OF ty_delt_log,
        END OF ty_delt_log.
 
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
-*CLASS lcl_pretty_json DEFINITION DEFERRED.
+CLASS lcl_pretty_json DEFINITION DEFERRED.
 CLASS lcl_ui2_json DEFINITION DEFERRED.
 
 *&----------------------------------------------------------------------
@@ -313,7 +313,7 @@ FORM frm_init_variables .
     ls_folder-folder = &2.
     APPEND ls_folder TO gt_folder.
     CLEAR ls_folder.
-  end-of-definition.
+  END-OF-DEFINITION.
 
   zappend 'MM'   ''.
   zappend 'PP'   ''.
@@ -978,7 +978,7 @@ FORM frm_get_class .
     ls_type-exline = &2.
     APPEND ls_type TO lt_type.
     CLEAR ls_type.
-  end-of-definition.
+  END-OF-DEFINITION.
 
   zappend seop_ext_class_locals_def  4.
   zappend seop_ext_class_locals_imp  4.
@@ -1243,7 +1243,6 @@ FORM frm_get_class .
   PERFORM frm_add_map_file USING gv_parent_folder.
 
 ENDFORM.                    "frm_get_class
-
 
 
 *----------------------------------------------------------------------*
@@ -1847,12 +1846,12 @@ ENDCLASS.                    "lcl_export_ddldict DEFINITION
 *----------------------------------------------------------------------*
 *
 *----------------------------------------------------------------------*
-*CLASS lcl_pretty_json DEFINITION.
-*  PUBLIC SECTION.
-*
-*    CLASS-METHODS: pretty IMPORTING json               TYPE string
-*                          RETURNING value(pretty_json) TYPE string.
-*ENDCLASS.                    "lcl_pretty_json DEFINITION
+CLASS lcl_pretty_json DEFINITION.
+  PUBLIC SECTION.
+
+    CLASS-METHODS: pretty IMPORTING json               TYPE string
+                          RETURNING VALUE(pretty_json) TYPE string.
+ENDCLASS.                    "lcl_pretty_json DEFINITION
 
 *----------------------------------------------------------------------*
 *       CLASS lcl_export_ddldict IMPLEMENTATION
@@ -1914,6 +1913,8 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
 
         IF ls_field-key = 'X'.
           CONCATENATE `key ` ls_field-name INTO lv_string RESPECTING BLANKS.
+        ELSE.
+          lv_string = ls_field-name.
         ENDIF.
 
         IF ls_field-adddesc IS NOT INITIAL.
@@ -1936,7 +1937,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
             APPEND lv_str TO me->ddldicts.
           ELSE.
             CONCATENATE `  ` lv_string INTO lv_str RESPECTING BLANKS.
-            lv_max = ls_table-field_max + 1.
+            lv_max = ls_table-field_max + 1 - strlen( lv_string ).
             DO lv_max TIMES.
               CONCATENATE lv_str ` ` INTO lv_str RESPECTING BLANKS.
             ENDDO.
@@ -1956,7 +1957,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
             APPEND lv_str TO me->ddldicts.
           ELSE.
             CONCATENATE `  ` lv_string INTO lv_str RESPECTING BLANKS.
-            lv_max = ls_table-field_max + 1.
+            lv_max = ls_table-field_max + 1 - strlen( lv_string ).
             DO lv_max TIMES.
               CONCATENATE lv_str ` ` INTO lv_str RESPECTING BLANKS.
             ENDDO.
@@ -2057,7 +2058,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
       add_line( str = ls_table-encat type = me->types-encat ).
 
       " 表名称
-      CONCATENATE `define structure ` lv_str ` \{` INTO lv_str RESPECTING BLANKS.
+      CONCATENATE `define structure ` lv_str ` {` INTO lv_str RESPECTING BLANKS.
       TRANSLATE lv_str TO LOWER CASE.
       add_line( str = lv_str type = '' ).
 
@@ -2080,7 +2081,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
           APPEND lv_str TO me->ddldicts.
         ELSE.
           lv_max = ls_table-field_max + 1.
-          lv_str = `  `.
+          CONCATENATE `  ` ls_field-name INTO lv_str RESPECTING BLANKS.
           DO lv_max TIMES.
             CONCATENATE lv_str ` ` INTO lv_str RESPECTING BLANKS.
           ENDDO.
@@ -2093,6 +2094,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
           CONCATENATE lv_str `;` INTO lv_str RESPECTING BLANKS.
           APPEND lv_str TO me->ddldicts.
         ENDIF.
+        CLEAR lv_str.
       ENDLOOP.
 
       " 结束
@@ -2224,7 +2226,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
         APPEND lv_str TO me->ddldicts.
       WHEN me->types-define.
         " 表名
-        CONCATENATE `define table ` str ` \{` INTO lv_str RESPECTING BLANKS.
+        CONCATENATE `define table ` str ` {` INTO lv_str RESPECTING BLANKS.
         APPEND lv_str TO me->ddldicts.
       WHEN OTHERS.
         APPEND str TO me->ddldicts.
@@ -2232,6 +2234,120 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
   ENDMETHOD.                    "add_line
 
 ENDCLASS.                    "lcl_export_ddldict IMPLEMENTATION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_pretty_json IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS lcl_pretty_json IMPLEMENTATION.
+  METHOD pretty.
+    " 匹配数量
+    DATA: invalidfs TYPE i,
+          invalidbs TYPE i.
+
+    DATA: lv_loff TYPE i,  " 上次开始位置
+          l_alen  TYPE i.  " 匹配开始位置
+
+    " 匹配内容
+    DATA: l_exec TYPE string,
+          l_indx TYPE i,
+          l_ftc  TYPE string.
+
+    " 缩进计算
+    DATA: keytimesf        TYPE i,
+          keytimesb        TYPE i,
+          indentationtimes TYPE i.
+
+    DATA: ls_result TYPE match_result,
+          lt_result TYPE TABLE OF match_result.
+
+    DATA: lv_ftc TYPE i.
+
+    FIND ALL OCCURRENCES OF REGEX `\{|\}|,|:` IN json
+      RESULTS lt_result.
+
+    IF lt_result IS INITIAL.
+      pretty_json = json.
+      RETURN.
+    ELSE.
+
+      LOOP AT lt_result INTO ls_result.
+        l_alen = ls_result-offset + ls_result-length - lv_loff.
+
+        l_exec = json+ls_result-offset(ls_result-length).
+
+        l_indx = ls_result-offset + ls_result-length.
+
+        " 匹配开头到当前字符串之间的字符串
+        l_ftc = json+0(l_indx).
+
+        REPLACE ALL OCCURRENCES OF REGEX `\\"` IN l_ftc WITH ``.
+        REPLACE ALL OCCURRENCES OF REGEX `[^"]` IN l_ftc WITH ``.
+
+        lv_ftc = strlen( l_ftc ) MOD 2.
+
+        IF lv_ftc <> 0.
+
+          IF l_exec+0(1) = `{`.
+            invalidfs = invalidfs + 1.
+          ELSEIF l_exec+0(1) = `}`.
+            invalidbs = invalidbs + 1.
+          ENDIF.
+
+          CONTINUE.
+        ENDIF.
+
+        " 匹配开头到当前字符串之间的字符串
+        l_ftc = json+0(l_indx).
+
+        REPLACE ALL OCCURRENCES OF REGEX `[^{]` IN l_ftc WITH ``.
+        keytimesf = strlen( l_ftc ) - invalidfs.
+
+        " 匹配开头到当前字符串之间的字符串
+        l_ftc = json+0(l_indx).
+
+        REPLACE ALL OCCURRENCES OF REGEX `[^}]` IN l_ftc WITH ``.
+        keytimesb = strlen( l_ftc ) - invalidbs.
+
+        indentationtimes = keytimesf - keytimesb.
+
+        IF l_exec+0(1) = '{'.
+          CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          DO indentationtimes TIMES.
+            CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
+          ENDDO.
+        ELSEIF l_exec+0(1) = '}'.
+          l_alen = l_alen - 1.
+          CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          " CONCATENATE pretty_json json+lv_loff(l_alen) INTO pretty_json RESPECTING BLANKS.
+          DO indentationtimes TIMES.
+            CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
+          ENDDO.
+
+          CONCATENATE pretty_json '}' INTO pretty_json.
+        ELSEIF l_exec+0(1) = ','.
+          CONCATENATE pretty_json json+lv_loff(l_alen) cl_abap_char_utilities=>cr_lf INTO pretty_json RESPECTING BLANKS.
+          DO indentationtimes TIMES.
+            CONCATENATE pretty_json `  ` INTO pretty_json RESPECTING BLANKS.
+          ENDDO.
+        ELSEIF l_exec+0(1) = ':'.
+          CONCATENATE pretty_json json+lv_loff(l_alen) ` ` INTO pretty_json RESPECTING BLANKS.
+        ENDIF.
+
+        lv_loff = ls_result-offset + ls_result-length.
+
+      ENDLOOP.
+      IF sy-subrc = 0.
+*        lv_loff -= 1.
+*
+*        CONCATENATE pretty_json json+lv_loff INTO pretty_json.
+      ENDIF.
+
+    ENDIF.
+
+  ENDMETHOD.                    "pretty
+ENDCLASS.                    "lcl_pretty_json IMPLEMENTATION
 
 *&---------------------------------------------------------------------*
 *&      Form  frm_get_tables_ddl
@@ -2994,7 +3110,7 @@ FORM frm_get_domain .
                                   pretty_name = lcl_ui2_json=>pretty_mode-camel_case ).
     CLEAR ls_doma.
 
-*    lv_source = lcl_pretty_json=>pretty( lv_source ).
+    lv_source = lcl_pretty_json=>pretty( lv_source ).
 
     " string -> xstring
     gr_cover_out->convert(
@@ -3157,6 +3273,8 @@ FORM frm_get_element .
                                   pretty_name = lcl_ui2_json=>pretty_mode-camel_case ).
     CLEAR ls_elem.
 
+    lv_source = lcl_pretty_json=>pretty( lv_source ).
+
     " string -> xstring
     gr_cover_out->convert(
           EXPORTING data = lv_source
@@ -3312,7 +3430,7 @@ FORM frm_get_tabletypes.
                                   pretty_name = lcl_ui2_json=>pretty_mode-camel_case ).
     CLEAR ls_ttyp.
 
-*      lv_source = lcl_pretty_json=>pretty( lv_source ).
+    lv_source = lcl_pretty_json=>pretty( lv_source ).
 
     " string -> xstring
     gr_cover_out->convert(
@@ -3600,7 +3718,7 @@ FORM frm_get_tcode .
   lv_source = lcl_ui2_json=>serialize( data = lo_tran
                                 pretty_name = lcl_ui2_json=>pretty_mode-camel_case ).
 
-*  lv_source = lcl_pretty_json=>pretty( lv_source ).
+  lv_source = lcl_pretty_json=>pretty( lv_source ).
 
   " string -> xstring
   gr_cover_out->convert(
@@ -3715,12 +3833,12 @@ DEFINE escape_json_inplace.
 *  replace all occurrences of regex `[\\"]` in &1 with `\\$0`. <-- this is slower than 2 plain replaces
   REPLACE ALL OCCURRENCES OF `\` IN &1 WITH `\\`.
   REPLACE ALL OCCURRENCES OF `"` IN &1 WITH `\"`.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE escape_json.
   &2 = &1.
   escape_json_inplace &2.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE is_compressable.
   IF mv_extended IS INITIAL.
@@ -3728,7 +3846,7 @@ DEFINE is_compressable.
   ELSE.
     &3 = is_compressable( type_descr = &1 name = &2 ).
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE dump_type.
   IF mv_extended IS INITIAL.
@@ -3736,7 +3854,7 @@ DEFINE dump_type.
   ELSE.
     &3 = dump_type( data = &1 type_descr = &2 convexit = &4 ).
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE dump_type_int.
 
@@ -3841,7 +3959,7 @@ DEFINE dump_type_int.
     ENDCASE.
   ENDIF.
 
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE format_name.
   CASE &2.
@@ -3870,11 +3988,11 @@ DEFINE format_name.
     WHEN OTHERS.
       &3 = &1.
   ENDCASE.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE throw_error.
   RAISE EXCEPTION TYPE cx_sy_move_cast_error.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE while_offset_cs.
 *  >= 7.02 alternative
@@ -3892,7 +4010,7 @@ DEFINE while_offset_cs.
   ENDWHILE.
 * < 7.02
 
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE while_offset_not_cs.
   WHILE offset < length.
@@ -3902,14 +4020,14 @@ DEFINE while_offset_not_cs.
     ENDIF.
     offset = offset + 1.
   ENDWHILE.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE eat_white.
   while_offset_cs sv_white_space.
   IF offset GE length.
     throw_error.
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE eat_name.
   IF json+offset(1) EQ `"`.
@@ -3925,7 +4043,7 @@ DEFINE eat_name.
   ELSE.
     throw_error.
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE eat_string.
   IF json+offset(1) EQ `"`.
@@ -3959,14 +4077,14 @@ DEFINE eat_string.
   ELSE.
     throw_error.
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE eat_number.
   mark   = offset.
   while_offset_cs `0123456789+-eE.`.                        "#EC NOTEXT
   match = offset - mark.
   &1 = json+mark(match).
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE eat_bool.
   mark   = offset.
@@ -3983,7 +4101,7 @@ DEFINE eat_bool.
   ELSEIF json+mark(match) EQ `null`.                        "#EC NOTEXT
     CLEAR &1.
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 DEFINE eat_char.
   IF offset < length AND json+offset(1) EQ &1.
@@ -3991,7 +4109,7 @@ DEFINE eat_char.
   ELSE.
     throw_error.
   ENDIF.
-end-of-definition.
+END-OF-DEFINITION.
 
 *----------------------------------------------------------------------*
 *       CLASS lcl_ui2_json IMPLEMENTATION
