@@ -39,5 +39,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           body: "压缩代码下载器，用于从已配置 backup4abap_interface 的 ICF 服务通过 HTTP 请求下载代码包到本地，并自动解压。"
-          files: ./backup4abap_go/backup.exe
+          files: ./backup4abap_go/backup*
           token: ${{ secrets.RELEASE_TOKEN }}
