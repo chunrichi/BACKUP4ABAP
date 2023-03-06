@@ -79,6 +79,12 @@ abap code backup
   - 忽略 ecc 情况下 zip 方法不完全的问题
   - 注释 ecc 情况下 CDS 相关下载
   - 新增 UI2/CL_JSON 方法的嵌入
+- v2.11g
+  - 修复 github action 的问题
+- v2.12
+  - 新增 类型池的下载(同步ecc)
+  - 新增 模块池的下载(同步ecc)
+  - 新增 处理进度展示(同步ecc)
 
 ## 协议
 
