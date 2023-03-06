@@ -77,6 +77,7 @@ abap code backup
   - 修复 ecc 情况下 pretty json 封装的问题
   - 修复 ecc 情况下 新语法的问题
   - 忽略 ecc 情况下 zip 方法不完全的问题
+  - 注释 ecc 情况下 CDS 相关下载
   - 新增 UI2/CL_JSON 方法的嵌入
 
 ## 协议
