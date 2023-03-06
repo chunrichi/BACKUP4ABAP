@@ -450,7 +450,8 @@ FORM frm_get_report .
     WHERE (
          ( rep~progname LIKE 'Z%' AND rep~subc = '1' )
       OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' ) )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'T' ) )
       AND rep~r3state = 'A'
       AND tad~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_list).
@@ -496,6 +497,10 @@ FORM frm_get_report .
       lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
     ELSEIF ls_list-subc = 'M'.
       lv_filename = 'MODULEPOOLS/' && COND #( WHEN lv_folder IS NOT INITIAL
+                                     THEN |{ lv_folder }/| ).
+      lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
+    ELSEIF ls_list-subc = 'T'.
+      lv_filename = 'TYPEPOOLS/' && COND #( WHEN lv_folder IS NOT INITIAL
                                      THEN |{ lv_folder }/| ).
       lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
     ENDIF.
