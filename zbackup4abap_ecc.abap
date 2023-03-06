@@ -53,6 +53,7 @@ TYPES: BEGIN OF ty_delt_log,
        END OF ty_delt_log.
 
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
+CLASS lcl_progress_bar DEFINITION DEFERRED.
 CLASS lcl_pretty_json DEFINITION DEFERRED.
 CLASS lcl_ui2_json DEFINITION DEFERRED.
 
@@ -252,6 +253,28 @@ START-OF-SELECTION.
 
   PERFORM frm_export_zip.
 
+*----------------------------------------------------------------------*
+*       CLASS lcl_progress_bar DEFINITION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS lcl_progress_bar DEFINITION.
+  PUBLIC SECTION.
+
+    DATA: count     TYPE i,
+          base_desc TYPE string,
+          curr      TYPE i.
+
+    METHODS constructor IMPORTING i_count     TYPE i OPTIONAL
+                                  i_base_desc TYPE string OPTIONAL.
+
+    METHODS add IMPORTING i_add  TYPE i DEFAULT 1
+                          i_desc TYPE data OPTIONAL.
+  PRIVATE SECTION.
+    DATA: percent TYPE p DECIMALS 2 LENGTH 5.
+    METHODS display IMPORTING desc TYPE data.
+ENDCLASS.
+
 *&---------------------------------------------------------------------*
 *& Form frm_init_text
 *&---------------------------------------------------------------------*
@@ -436,6 +459,10 @@ FORM frm_get_report .
   DATA: lt_list TYPE TABLE OF ty_list,
         ls_list TYPE ty_list.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 读取 报表
   SELECT
     rep~progname
@@ -451,7 +478,8 @@ FORM frm_get_report .
     INTO TABLE lt_list
     WHERE (
          ( rep~progname LIKE 'Z%' AND rep~subc = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' ) )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' ) )
       AND rep~r3state = 'A'
       AND tad~devclass IN gt_range_devclass.
   SORT lt_list BY progname.
@@ -471,7 +499,12 @@ FORM frm_get_report .
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
+  DESCRIBE TABLE lt_list LINES lr_pb->count.
+  lr_pb->base_desc = 'Process Report & '.
+
   LOOP AT lt_list INTO ls_list.
+    lr_pb->add( i_desc = ls_list-progname ).
+
     " 忽略当前程序
     IF ls_list-progname = sy-cprog.
       CONTINUE.
@@ -484,18 +517,24 @@ FORM frm_get_report .
     IF ls_list-subc = 'I'.
       IF lv_folder+0(1) = 'X'.
         " 特殊
-        CONCATENATE 'cmod/' ls_list-progname '.' gc_extension_name INTO lv_filename.
+        CONCATENATE 'CMOD/' ls_list-progname '.' gc_extension_name INTO lv_filename.
       ELSE.
         IF lv_folder IS NOT INITIAL.
           CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
         ENDIF.
-        CONCATENATE lv_filename 'include/' ls_list-progname '.' gc_extension_name INTO lv_filename.
+        CONCATENATE lv_filename 'INCLUDE/' ls_list-progname '.' gc_extension_name INTO lv_filename.
       ENDIF.
-    ELSE.
+    ELSEIF ls_list-subc = '1'.
       IF lv_folder IS NOT INITIAL.
         CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
       ENDIF.
-      CONCATENATE ls_list-progname '.' gc_extension_name INTO lv_filename.
+      CONCATENATE lv_filename ls_list-progname '.' gc_extension_name INTO lv_filename.
+    ELSEIF ls_list-subc = 'M'.
+      CONCATENATE 'MODULEPOOLS/' lv_filename INTO lv_filename.
+      IF lv_folder IS NOT INITIAL.
+        CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
+      ENDIF.
+      CONCATENATE lv_filename ls_list-progname '.' gc_extension_name INTO lv_filename.
     ENDIF.
 
     " map 文件路径
@@ -590,6 +629,10 @@ FORM frm_get_function .
   DATA: lv_folder TYPE char10,
         lv_max    TYPE i.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 此处获取所有的 Z* 函数组数据
   SELECT
     fu~funcname AS functionname
@@ -656,7 +699,11 @@ FORM frm_get_function .
 
   DATA: ls_func LIKE LINE OF lt_func.
 
+  DESCRIBE TABLE lt_func LINES lr_pb->count.
+  lr_pb->base_desc = 'Process Function & '.
+
   LOOP AT lt_func INTO ls_func.
+    lr_pb->add( i_desc = ls_func-functionname ).
 
     PERFORM frm_get_folder_name USING 'F' ls_func-functionname lv_folder.
 
@@ -748,7 +795,12 @@ FORM frm_get_function .
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
+  DESCRIBE TABLE lt_list LINES lr_pb->count.
+  lr_pb->base_desc = 'Process Function More & '.
+
   LOOP AT lt_list INTO ls_list.
+    lr_pb->add( i_desc = ls_list-progname ).
+
     " 文件名
     CONCATENATE ls_list-progname '.' gc_extension_name INTO lv_filename.
 
@@ -1082,6 +1134,10 @@ FORM frm_get_class .
 
   DATA: lo_source TYPE REF TO cl_oo_source.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " CALL METHOD ('CL_OO_FACTORY')=>('CREATE_INSTANCE')
   "   RECEIVING
   "     result = lo_instance.
@@ -1102,7 +1158,11 @@ FORM frm_get_class .
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
+  DESCRIBE TABLE lt_class LINES lr_pb->count.
+  lr_pb->base_desc = 'Process Class & '.
+
   LOOP AT lt_class INTO ls_class.
+    lr_pb->add( i_desc = ls_class-clsname ).
 
     CONCATENATE ls_class-clsname `.abap` INTO lv_filename.
 
@@ -2500,6 +2560,10 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
   DATA: lt_dd08l TYPE TABLE OF ty_dd08l,
         ls_dd08l TYPE ty_dd08l.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 查询基础数据
   SELECT
    dd~tabname
@@ -2647,7 +2711,11 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
   DATA: lv_str TYPE string.
   DATA: ls_eq LIKE LINE OF <ls_field>-foreignkey-foreignkey_eq.
 
+  DESCRIBE TABLE lt_dd02l LINES lr_pb->count.
+  CONCATENATE 'Process ' p_type ' & ' INTO lr_pb->base_desc RESPECTING BLANKS.
+
   LOOP AT lt_dd02l INTO ls_dd02l.
+    lr_pb->add( i_desc = ls_dd02l-tabname ).
 
     " 检查增量
     IF p_delt = 'X'.
@@ -3008,6 +3076,10 @@ FORM frm_get_domain .
 
   DATA: lo_doma TYPE REF TO data.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 数据获取
   SELECT
     dd~domname
@@ -3062,7 +3134,12 @@ FORM frm_get_domain .
     SORT lt_dd07 BY domname valpos.
   ENDIF.
 
+  DESCRIBE TABLE lt_dd01l LINES lr_pb->count.
+  lr_pb->base_desc = 'Process Domain & '.
+
   LOOP AT lt_dd01l INTO ls_dd01.
+    lr_pb->add( i_desc = ls_dd01-domname ).
+
     CONCATENATE ls_dd01-domname '.json' INTO lv_filename.
 
     CONCATENATE gv_parent_folder lv_filename INTO lv_filename.
@@ -3195,6 +3272,10 @@ FORM frm_get_element .
 
   DATA: lo_elem TYPE REF TO data.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 数据获取
   SELECT
     dd~rollname
@@ -3242,7 +3323,12 @@ FORM frm_get_element .
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
+  DESCRIBE TABLE lt_dd04l LINES lr_pb->count.
+  lr_pb->base_desc = 'Process Element & '.
+
   LOOP AT lt_dd04l INTO ls_dd04.
+    lr_pb->add( i_desc = ls_dd04-rollname ).
+
     CONCATENATE ls_dd04-rollname '.json' INTO lv_filename.
 
     CONCATENATE gv_parent_folder lv_filename INTO lv_filename.
@@ -3355,6 +3441,10 @@ FORM frm_get_tabletypes.
 
   DATA: lo_ttyp TYPE REF TO data.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 数据获取
   SELECT
     dd~typename
@@ -3398,8 +3488,11 @@ FORM frm_get_tabletypes.
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
-  LOOP AT lt_dd40l INTO ls_dd40.
+  DESCRIBE TABLE lt_dd40l LINES lr_pb->count.
+  lr_pb->base_desc = 'Process TableType & '.
 
+  LOOP AT lt_dd40l INTO ls_dd40.
+    lr_pb->add( i_desc = ls_dd40-typename ).
     CONCATENATE ls_dd40-typename '.json' INTO lv_filename.
 
     CONCATENATE gv_parent_folder lv_filename INTO lv_filename.
@@ -3525,6 +3618,10 @@ FORM frm_get_smw0 .
         ls_param_ext  TYPE ty_param,
         ls_param_size TYPE ty_param.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   SELECT
     relid
     objid
@@ -3570,7 +3667,11 @@ FORM frm_get_smw0 .
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
+  DESCRIBE TABLE lt_smw0 LINES lr_pb->count.
+  lr_pb->base_desc = 'Process SMW0 & '.
+
   LOOP AT lt_smw0 INTO ls_smw0.
+    lr_pb->add( i_desc = ls_smw0-objid ).
     CONCATENATE ls_smw0-objid `_` ls_smw0-text INTO lv_filename.
 
     " 后缀名
@@ -5775,3 +5876,46 @@ CLASS lcl_ui2_json IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.                    "bool_to_tribool
 ENDCLASS.                    "LCL_UI2_JSON IMPLEMENTATION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_progress_bar IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS lcl_progress_bar IMPLEMENTATION.
+
+  METHOD constructor.
+    me->count = i_count.
+    me->base_desc = i_base_desc.
+  ENDMETHOD.
+
+  METHOD add.
+
+    me->curr = me->curr + i_add.
+
+    me->percent = me->curr / me->count * 100.
+
+    me->display( i_desc ).
+
+  ENDMETHOD.
+
+  METHOD display.
+    DATA: lv_text TYPE string,
+          lv_num1 TYPE string,
+          lv_num2 TYPE string.
+    lv_num1 = me->curr.
+    lv_num2 = me->count.
+
+    CONDENSE lv_num1 NO-GAPS.
+    CONDENSE lv_num2 NO-GAPS.
+
+    CONCATENATE '[' lv_num1 '/' lv_num2 '] ' me->base_desc INTO lv_text.
+
+    REPLACE FIRST OCCURRENCE OF '&' IN lv_text WITH desc.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING
+        percentage = me->percent
+        text       = lv_text.
+  ENDMETHOD.
+ENDCLASS.
