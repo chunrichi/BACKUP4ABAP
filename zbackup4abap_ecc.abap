@@ -479,7 +479,8 @@ FORM frm_get_report .
     WHERE (
          ( rep~progname LIKE 'Z%' AND rep~subc = '1' )
       OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' ) )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'T' ) )
       AND rep~r3state = 'A'
       AND tad~devclass IN gt_range_devclass.
   SORT lt_list BY progname.
@@ -531,6 +532,12 @@ FORM frm_get_report .
       CONCATENATE lv_filename ls_list-progname '.' gc_extension_name INTO lv_filename.
     ELSEIF ls_list-subc = 'M'.
       CONCATENATE 'MODULEPOOLS/' lv_filename INTO lv_filename.
+      IF lv_folder IS NOT INITIAL.
+        CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
+      ENDIF.
+      CONCATENATE lv_filename ls_list-progname '.' gc_extension_name INTO lv_filename.
+    ELSEIF ls_list-subc = 'T'.
+      CONCATENATE 'TYPEPOOLS/' lv_filename INTO lv_filename.
       IF lv_folder IS NOT INITIAL.
         CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
       ENDIF.
