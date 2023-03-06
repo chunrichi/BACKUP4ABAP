@@ -713,6 +713,7 @@ FORM frm_get_function .
 
   lr_pb->count = lines( lt_list ).
   lr_pb->base_desc = 'Process Function More & '.
+  lr_pb->curr  = 0.
 
   DATA: lv_str_len TYPE i.
 
