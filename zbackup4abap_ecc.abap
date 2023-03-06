@@ -804,6 +804,7 @@ FORM frm_get_function .
 
   DESCRIBE TABLE lt_list LINES lr_pb->count.
   lr_pb->base_desc = 'Process Function More & '.
+  lr_pb->curr      = 0.
 
   LOOP AT lt_list INTO ls_list.
     lr_pb->add( i_desc = ls_list-progname ).
