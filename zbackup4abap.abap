@@ -53,6 +53,7 @@ TYPES: BEGIN OF ty_delt_log,
 
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
 CLASS lcl_pretty_json DEFINITION DEFERRED.
+CLASS lcl_progress_bar DEFINITION DEFERRED.
 
 *&----------------------------------------------------------------------
 *                     Variables
@@ -250,6 +251,29 @@ START-OF-SELECTION.
 
   PERFORM frm_export_zip.
 
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_progress_bar DEFINITION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS lcl_progress_bar DEFINITION.
+  PUBLIC SECTION.
+
+    DATA: count     TYPE i,
+          base_desc TYPE string,
+          curr      TYPE i.
+
+    METHODS constructor IMPORTING i_count     TYPE i OPTIONAL
+                                  i_base_desc TYPE string OPTIONAL.
+
+    METHODS add IMPORTING i_add  TYPE i DEFAULT 1
+                          i_desc TYPE data OPTIONAL.
+  PRIVATE SECTION.
+    DATA: percent TYPE p DECIMALS 2 LENGTH 5.
+    METHODS display IMPORTING desc TYPE data.
+ENDCLASS.
+
 *&---------------------------------------------------------------------*
 *& Form frm_init_text
 *&---------------------------------------------------------------------*
@@ -407,6 +431,10 @@ FORM frm_get_report .
   DATA: lv_folder TYPE char10,
         lv_max    TYPE i.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 读取 报表
   SELECT
     rep~progname,
@@ -427,6 +455,9 @@ FORM frm_get_report .
     INTO TABLE @DATA(lt_list).
   SORT lt_list BY progname.
 
+  lr_pb->count = lines( lt_list ).
+  lr_pb->base_desc = 'Process Report & '.
+
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'PROG' BINARY SEARCH.
   IF sy-subrc <> 0.
@@ -438,6 +469,8 @@ FORM frm_get_report .
   ENDIF.
 
   LOOP AT lt_list INTO DATA(ls_list).
+    lr_pb->add( i_desc = ls_list-progname ).
+
     " 忽略当前程序
     IF ls_list-progname = sy-cprog.
       CONTINUE.
@@ -531,6 +564,10 @@ FORM frm_get_function .
   DATA: lv_folder TYPE char10,
         lv_max    TYPE i.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 此处获取所有的 Z* 函数组数据
   SELECT
     fu~funcname AS functionname,
@@ -556,6 +593,9 @@ FORM frm_get_function .
     SORT lt_tftit BY funcname.
   ENDIF.
   SORT lt_func BY functionname.
+
+  lr_pb->count = lines( lt_func ).
+  lr_pb->base_desc = 'Process Function & '.
 
   LOOP AT lt_func ASSIGNING FIELD-SYMBOL(<ls_func_fixt>).
     READ TABLE lt_tftit INTO DATA(ls_tftit) WITH KEY funcname = <ls_func_fixt>-functionname BINARY SEARCH.
@@ -586,6 +626,7 @@ FORM frm_get_function .
   ENDIF.
 
   LOOP AT lt_func INTO DATA(ls_func).
+    lr_pb->add( i_desc = ls_func-functionname ).
 
     PERFORM frm_get_folder_name USING 'F' ls_func-functionname lv_folder.
 
@@ -660,6 +701,9 @@ FORM frm_get_function .
     INTO TABLE @DATA(lt_list).
   SORT lt_list BY progname.
 
+  lr_pb->count = lines( lt_list ).
+  lr_pb->base_desc = 'Process Function More & '.
+
   DATA: lv_str_len TYPE i.
 
   READ TABLE gt_delt_log ASSIGNING <ls_delt_log> WITH KEY object = 'FINC' BINARY SEARCH.
@@ -672,6 +716,8 @@ FORM frm_get_function .
   ENDIF.
 
   LOOP AT lt_list INTO DATA(ls_list).
+    lr_pb->add( i_desc = ls_list-progname ).
+
     " 文件名
     lv_filename = |{ ls_list-progname }.{ gc_extension_name }|.
 
@@ -861,6 +907,10 @@ FORM frm_get_class .
   DATA: lt_type TYPE TABLE OF ty_type,
         lv_max  TYPE i.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   lt_type = VALUE #( ( type = seop_ext_class_locals_def  exline = 4 )
                      ( type = seop_ext_class_locals_imp  exline = 4 )
                      ( type = seop_ext_class_macros      exline = 3 )
@@ -950,6 +1000,9 @@ FORM frm_get_class .
     RECEIVING
       result = lo_instance.
 
+  lr_pb->count = lines( lt_class ).
+  lr_pb->base_desc = 'Process Class & '.
+
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'CLSS' BINARY SEARCH.
   IF sy-subrc <> 0.
@@ -961,6 +1014,7 @@ FORM frm_get_class .
   ENDIF.
 
   LOOP AT lt_class INTO DATA(ls_class).
+    lr_pb->add( i_desc = ls_class-clsname ).
 
     lv_filename = ls_class-clsname && '.abap'.
 
@@ -1158,6 +1212,10 @@ FORM frm_get_ddl .
   DATA: lv_folder TYPE char2,
         lv_max    TYPE i.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 读取 DDL
   SELECT
     rc~ddlname,
@@ -1178,6 +1236,9 @@ FORM frm_get_ddl .
 
   SORT lt_ddlsrc BY ddlname.
 
+  lr_pb->count = lines( lt_ddlsrc ).
+  lr_pb->base_desc = 'Process CDS & '.
+
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'DDLS' BINARY SEARCH.
   IF sy-subrc <> 0.
@@ -1189,6 +1250,7 @@ FORM frm_get_ddl .
   ENDIF.
 
   LOOP AT lt_ddlsrc INTO DATA(ls_ddl).
+    lr_pb->add( i_desc = ls_ddl-ddlname ).
     " 文件夹匹配 -> 文件名
 
     PERFORM frm_get_folder_name USING 'D' ls_ddl-ddlname lv_folder.
@@ -1659,6 +1721,10 @@ ENDFORM.
 
 FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddldict.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 查询基础数据
   SELECT
    dd~tabname,
@@ -1775,8 +1841,11 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
     <ls_delt_log>-dtime = sy-uzeit.
   ENDIF.
 
+  lr_pb->count = lines( lt_dd02l ).
+  lr_pb->base_desc = 'Process ' && p_type && ' & '.
 
   LOOP AT lt_dd02l INTO DATA(ls_dd02l).
+    lr_pb->add( i_desc = ls_dd02l-tabname ).
 
     " 检查增量
     IF p_delt = 'X'.
@@ -2078,6 +2147,10 @@ FORM frm_get_domain .
   DATA: ls_doma  TYPE ty_doma,
         lv_tabix TYPE sytabix.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 数据获取
   SELECT
     dd~domname,
@@ -2096,6 +2169,9 @@ FORM frm_get_domain .
       AND dd~domname  LIKE 'Z%'
       AND dd~as4user <> 'SAP'
     INTO TABLE @DATA(lt_dd01l).
+
+  lr_pb->count = lines( lt_dd01l ).
+  lr_pb->base_desc = 'Process Domain & '.
 
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'DOMA' BINARY SEARCH.
@@ -2128,6 +2204,8 @@ FORM frm_get_domain .
   ENDIF.
 
   LOOP AT lt_dd01l INTO DATA(ls_dd01).
+    lr_pb->add( i_desc = ls_dd01-domname ).
+
     lv_filename = ls_dd01-domname && '.json'.
 
     lv_filename = gv_parent_folder && lv_filename.
@@ -2233,6 +2311,10 @@ FORM frm_get_element .
   DATA: ls_elem  TYPE ty_elem,
         lv_tabix TYPE sytabix.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 数据获取
   SELECT
     dd~rollname,
@@ -2265,6 +2347,9 @@ FORM frm_get_element .
       AND dd~as4user <> 'SAP'
     INTO TABLE @DATA(lt_dd04l).
 
+  lr_pb->count = lines( lt_dd04l ).
+  lr_pb->base_desc = 'Process Element & '.
+
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'DTEL' BINARY SEARCH.
   IF sy-subrc <> 0.
@@ -2276,6 +2361,8 @@ FORM frm_get_element .
   ENDIF.
 
   LOOP AT lt_dd04l INTO DATA(ls_dd04).
+    lr_pb->add( i_desc = ls_dd04-rollname ).
+
     lv_filename = ls_dd04-rollname && '.json'.
 
     lv_filename = gv_parent_folder && lv_filename.
@@ -2364,6 +2451,10 @@ FORM frm_get_tabletypes.
   DATA: ls_ttyp  TYPE ty_ttyp,
         lv_tabix TYPE sytabix.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   " 数据获取
   SELECT
     dd~typename,
@@ -2392,6 +2483,9 @@ FORM frm_get_tabletypes.
       AND dd~typename  LIKE 'Z%'
     INTO TABLE @DATA(lt_dd40l).
 
+  lr_pb->count = lines( lt_dd40l ).
+  lr_pb->base_desc = 'Process TableType & '.
+
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'TTYP' BINARY SEARCH.
   IF sy-subrc <> 0.
@@ -2403,6 +2497,8 @@ FORM frm_get_tabletypes.
   ENDIF.
 
   LOOP AT lt_dd40l INTO DATA(ls_dd40).
+    lr_pb->add( i_desc = ls_dd40-typename ).
+
     lv_filename = ls_dd40-typename && '.json'.
 
     lv_filename = gv_parent_folder && lv_filename.
@@ -2508,6 +2604,10 @@ FORM frm_get_smw0 .
   DATA: lv_xstring TYPE xstring,
         lv_size    TYPE i.
 
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
   SELECT
     relid,
     objid,
@@ -2538,6 +2638,9 @@ FORM frm_get_smw0 .
   SORT lt_smw0 BY objid.
   SORT lt_param BY objid name.
 
+  lr_pb->count = lines( lt_smw0 ).
+  lr_pb->base_desc = 'Process SMW0 & '.
+
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'SMW0' BINARY SEARCH.
   IF sy-subrc <> 0.
@@ -2549,6 +2652,8 @@ FORM frm_get_smw0 .
   ENDIF.
 
   LOOP AT lt_smw0 INTO DATA(ls_smw0).
+    lr_pb->add( i_desc = ls_smw0-objid ).
+
     lv_filename = ls_smw0-objid && `_` && ls_smw0-text.
 
     " 后缀名
@@ -2739,6 +2844,7 @@ FORM frm_get_strans .
     lv_xstr_xslt &&= <ls_xslt>-clustd.
 
     AT END OF xsltdesc.
+
       IMPORT xsltdesc = lt_tline FROM DATA BUFFER lv_xstr_xslt.
 
       IF lt_tline IS NOT INITIAL.
@@ -2778,3 +2884,39 @@ FORM frm_set_parent_folder  USING p_folder.
   gv_parent_folder = p_folder.
 
 ENDFORM.
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_progress_bar IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+CLASS lcl_progress_bar IMPLEMENTATION.
+
+  METHOD constructor.
+    me->count = i_count.
+    me->base_desc = i_base_desc.
+  ENDMETHOD.
+
+  METHOD add.
+
+    me->curr = me->curr + i_add.
+
+    me->percent = me->curr / me->count * 100.
+
+    me->display( i_desc ).
+
+  ENDMETHOD.
+
+  METHOD display.
+    DATA: lv_text TYPE string.
+
+    lv_text = |[{ me->curr }/{ me->count }] | && me->base_desc.
+
+    REPLACE FIRST OCCURRENCE OF '&' IN lv_text WITH desc.
+
+    CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+      EXPORTING
+        percentage = me->percent
+        text       = lv_text.
+  ENDMETHOD.
+ENDCLASS.
