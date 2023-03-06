@@ -449,7 +449,8 @@ FORM frm_get_report .
     LEFT JOIN trdirt AS des ON des~name = rep~progname AND des~sprsl = @sy-langu
     WHERE (
          ( rep~progname LIKE 'Z%' AND rep~subc = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' ) )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' ) )
       AND rep~r3state = 'A'
       AND tad~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_list).
@@ -489,9 +490,13 @@ FORM frm_get_report .
                               THEN |{ lv_folder }/| ).
         lv_filename &&= |INCLUDE/{ ls_list-progname }.{ gc_extension_name }|.
       ENDIF.
-    ELSE.
+    ELSEIF ls_list-subc = '1'.
       lv_filename = COND #( WHEN lv_folder IS NOT INITIAL
                             THEN |{ lv_folder }/| ).
+      lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
+    ELSEIF ls_list-subc = 'M'.
+      lv_filename = 'MODULEPOOLS/' && COND #( WHEN lv_folder IS NOT INITIAL
+                                     THEN |{ lv_folder }/| ).
       lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
     ENDIF.
 
