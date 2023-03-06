@@ -5,6 +5,8 @@
 
 从 github 中直接复制 `zbackup4abap.abap` 的源码
 
+	如使用的是 ECC 系统，改从 github 中复制 `zbackup4abap_ecc.abap` 的代码（注意 ecc 更老的版本没有 cds 视图，本程序针对 ECC6.0 开发）
+
 ![](../src/GihubCopyCode%2020230131.png)
 
 然后将代码导入到系统中，建议命名为 `zbackup4abap` 后续如有其他功能不需要更改代码
@@ -19,6 +21,9 @@
 
 - [x] 代码下载
 	- [x] 报表程序代码 
+    	- [X] 可执行程序下载
+    	- [X] 包含程序下载
+    	- [X] 模块池下载
 	- [x] 函数程序代码
 	- [x] 类程序代码
 - [x] DDIC 表相关内容下载
