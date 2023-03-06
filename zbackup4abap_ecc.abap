@@ -478,7 +478,8 @@ FORM frm_get_report .
     INTO TABLE lt_list
     WHERE (
          ( rep~progname LIKE 'Z%' AND rep~subc = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' ) )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' )
+      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' ) )
       AND rep~r3state = 'A'
       AND tad~devclass IN gt_range_devclass.
   SORT lt_list BY progname.
@@ -516,18 +517,24 @@ FORM frm_get_report .
     IF ls_list-subc = 'I'.
       IF lv_folder+0(1) = 'X'.
         " 特殊
-        CONCATENATE 'cmod/' ls_list-progname '.' gc_extension_name INTO lv_filename.
+        CONCATENATE 'CMOD/' ls_list-progname '.' gc_extension_name INTO lv_filename.
       ELSE.
         IF lv_folder IS NOT INITIAL.
           CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
         ENDIF.
-        CONCATENATE lv_filename 'include/' ls_list-progname '.' gc_extension_name INTO lv_filename.
+        CONCATENATE lv_filename 'INCLUDE/' ls_list-progname '.' gc_extension_name INTO lv_filename.
       ENDIF.
-    ELSE.
+    ELSEIF ls_list-subc = '1'.
       IF lv_folder IS NOT INITIAL.
         CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
       ENDIF.
-      CONCATENATE ls_list-progname '.' gc_extension_name INTO lv_filename.
+      CONCATENATE lv_filename ls_list-progname '.' gc_extension_name INTO lv_filename.
+    ELSEIF ls_list-subc = 'M'.
+      CONCATENATE 'MODULEPOOLS/' lv_filename INTO lv_filename.
+      IF lv_folder IS NOT INITIAL.
+        CONCATENATE lv_filename lv_folder '/' INTO lv_filename.
+      ENDIF.
+      CONCATENATE lv_filename ls_list-progname '.' gc_extension_name INTO lv_filename.
     ENDIF.
 
     " map 文件路径
