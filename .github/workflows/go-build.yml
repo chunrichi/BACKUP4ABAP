@@ -52,7 +52,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          body: ${{ variables.RCOMMIT }}
+          body: ${{ vars.RCOMMIT }}
           files: |
             ./backup4abap_go/backup* 
             ./abapscan_go/scan*
