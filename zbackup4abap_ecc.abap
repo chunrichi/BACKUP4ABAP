@@ -2575,6 +2575,8 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
   DATA: lt_dd08l TYPE TABLE OF ty_dd08l,
         ls_dd08l TYPE ty_dd08l.
 
+  DATA: lv_len TYPE string.
+
   DATA: lr_pb TYPE REF TO lcl_progress_bar.
 
   CREATE OBJECT lr_pb.
@@ -2722,7 +2724,6 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
   FIELD-SYMBOLS: <ls_table> LIKE LINE OF pr_ddl->gt_tables.
   FIELD-SYMBOLS <ls_field> LIKE LINE OF <ls_table>-fields.
   DATA: lv_fieldlen TYPE i.
-  DATA: lv_len TYPE i.
   DATA: lv_str TYPE string.
   DATA: ls_eq LIKE LINE OF <ls_field>-foreignkey-foreignkey_eq.
 
@@ -2798,24 +2799,28 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
         IF ls_dd03l-rollname IS INITIAL
           AND NOT ( ls_dd03l-fieldname = '.INCLUDE' " 切换为表取值后 include 的 rollname 为空
                  OR ls_dd03l-fieldname = '.INCLU--AP' ).  " append 特殊类型
+
+          lv_len = ls_dd03l-leng.
+          REPLACE REGEX '^0*' IN lv_len WITH ''.
+
           " 数据元素为空
           CASE ls_dd03l-datatype.
             WHEN 'DATS' OR 'TIMS'.
               CONCATENATE 'abap.' ls_dd03l-datatype INTO <ls_field>-type.
             WHEN 'CHAR' OR 'NUMC'.
-              CONCATENATE 'abap.' ls_dd03l-datatype  ls_dd03l-leng INTO <ls_field>-type.
+              CONCATENATE 'abap.' ls_dd03l-datatype  lv_len INTO <ls_field>-type.
             WHEN 'CURR'.
-              CONCATENATE 'abap.' ls_dd03l-datatype  ls_dd03l-leng ls_dd03l-decimals INTO <ls_field>-type.
+              CONCATENATE 'abap.' ls_dd03l-datatype  lv_len ls_dd03l-decimals INTO <ls_field>-type.
             WHEN 'DEC'.
-              CONCATENATE 'abap.' ls_dd03l-datatype  ls_dd03l-leng ls_dd03l-decimals INTO <ls_field>-type.
+              CONCATENATE 'abap.' ls_dd03l-datatype  lv_len ls_dd03l-decimals INTO <ls_field>-type.
             WHEN 'QUAN'.
-              CONCATENATE 'abap.' ls_dd03l-datatype  ls_dd03l-leng ls_dd03l-decimals INTO <ls_field>-type.
+              CONCATENATE 'abap.' ls_dd03l-datatype  lv_len ls_dd03l-decimals INTO <ls_field>-type.
             WHEN 'STRG'.
-              CONCATENATE `abap.string(` ls_dd03l-leng `)` INTO <ls_field>-type.
+              CONCATENATE `abap.string(` '0' `)` INTO <ls_field>-type.
             WHEN 'INT4' OR 'INT1' OR 'INT2' OR 'INT8'.
               CONCATENATE 'abap.' ls_dd03l-datatype INTO <ls_field>-type.
             WHEN OTHERS.
-              CONCATENATE ls_dd03l-datatype '-' ls_dd03l-leng INTO <ls_field>-type.
+              CONCATENATE ls_dd03l-datatype '-' lv_len INTO <ls_field>-type.
           ENDCASE.
           TRANSLATE <ls_field>-type TO LOWER CASE.
           " 补充描述
