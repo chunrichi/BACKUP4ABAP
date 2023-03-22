@@ -1250,7 +1250,7 @@ FORM frm_get_class .
     " CALL METHOD lo_source->('GET_SOURCE')
     "   IMPORTING
     "     SOURCE = lt_str.
-
+    lo_source->read( ).
     lt_str = lo_source->source.
 
     FREE lo_source.
