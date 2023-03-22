@@ -2148,7 +2148,7 @@ CLASS lcl_export_ddldict IMPLEMENTATION.
           CONCATENATE lv_str `;` INTO lv_str RESPECTING BLANKS.
           APPEND lv_str TO me->ddldicts.
         ELSE.
-          lv_max = ls_table-field_max + 1.
+          lv_max = ls_table-field_max + 1 - strlen( ls_field-name ).
           CONCATENATE `  ` ls_field-name INTO lv_str RESPECTING BLANKS.
           DO lv_max TIMES.
             CONCATENATE lv_str ` ` INTO lv_str RESPECTING BLANKS.
