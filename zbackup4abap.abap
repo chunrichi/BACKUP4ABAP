@@ -31,6 +31,8 @@ TYPES: BEGIN OF ty_function,
          functionmaininclude LIKE tfdir-funcname,
          functiontitle       LIKE tftit-stext,
          progname            LIKE tfdir-pname,
+
+         reportname          TYPE reposrc-progname,
        END OF ty_function.
 
 TYPES: BEGIN OF ty_log_list,
@@ -81,6 +83,8 @@ CONSTANTS: gc_newline TYPE abap_cr_lf VALUE cl_abap_char_utilities=>cr_lf.
 DATA: gt_range_append_class TYPE RANGE OF vseoclass-clsname.
 
 DATA: gt_delt_log TYPE TABLE OF ty_delt_log.
+
+DATA: gt_range_objname TYPE RANGE OF tadir-obj_name.
 
 *&----------------------------------------------------------------------
 *                     Select Screen
@@ -338,6 +342,10 @@ FORM frm_init_variables .
                       ).
   SORT gt_folder BY tag.
 
+  " 文件名
+  gt_range_objname = VALUE #( sign = 'I' option = 'CP' ( low = 'Z*' )
+                                                       ( low = 'Y*' ) ).
+
   " 增量数据获取
   IF p_delt = 'X'.
     IMPORT gt_delt_log FROM DATABASE demo_indx_blob(zd) ID 'DeltaDownload'.
@@ -448,11 +456,12 @@ FORM frm_get_report .
     INNER JOIN tadir AS tad ON tad~obj_name = rep~progname AND tad~object = 'PROG'
     LEFT JOIN trdirt AS des ON des~name = rep~progname AND des~sprsl = @sy-langu
     WHERE (
-         ( rep~progname LIKE 'Z%' AND rep~subc = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'I' AND rep~rload = '1' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'M' )
-      OR ( rep~progname LIKE 'Z%' AND rep~subc = 'T' ) )
+         ( rep~subc = '1' )
+      OR ( rep~subc = 'I' AND rep~rload = '1' )
+      OR ( rep~subc = 'M' )
+      OR ( rep~subc = 'T' ) )
       AND rep~r3state = 'A'
+      AND tad~obj_name IN @gt_range_objname
       AND tad~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_list).
   SORT lt_list BY progname.
@@ -586,9 +595,9 @@ FORM frm_get_function .
     fu~include  AS includenumber
     FROM enlfdir AS gr
     INNER JOIN tfdir AS fu ON fu~funcname = gr~funcname
-    LEFT JOIN tadir AS tad ON tad~obj_name = gr~area
-    WHERE gr~area LIKE 'Z%'    " 会包含表维护
-      AND gr~funcname LIKE 'Z%'
+    LEFT JOIN tadir AS tad ON tad~obj_name = gr~area AND tad~object = 'FUGR'
+    WHERE gr~area IN @gt_range_objname    " 限制函数组（部分标准程序也会有Z开头的函数）
+      AND gr~funcname IN @gt_range_objname
       AND tad~devclass IN @gt_range_devclass
     INTO CORRESPONDING FIELDS OF TABLE @lt_func.
   IF lt_func IS NOT INITIAL.
@@ -612,6 +621,9 @@ FORM frm_get_function .
     IF sy-subrc = 0.
       <ls_func_fixt>-functiontitle = ls_tftit-stext.
     ENDIF.
+
+    " 函数对应的实体
+    CONCATENATE 'L' <ls_func_fixt>-functiongroup 'U' <ls_func_fixt>-includenumber INTO <ls_func_fixt>-reportname.
   ENDLOOP.
 
   " 更新人获取
@@ -621,7 +633,9 @@ FORM frm_get_function .
     udat,
     utime
     FROM reposrc
-    WHERE progname LIKE 'LZ%' AND appl = 'S'
+    FOR ALL ENTRIES IN @lt_func
+    WHERE progname = @lt_func-reportname
+      AND appl = 'S'
     INTO TABLE @DATA(lt_rep).
   SORT lt_rep BY progname.
 
@@ -692,6 +706,15 @@ FORM frm_get_function .
   ENDLOOP.
 
   " --> more
+  DATA: lt_area TYPE RANGE OF reposrc-progname.
+  LOOP AT lt_func INTO DATA(ls_area).
+    APPEND VALUE #( sign = 'I' option = 'CP' low = |L{ ls_area-functiongroup }*| ) TO lt_area.
+  ENDLOOP.
+  SORT lt_area BY low.
+  DELETE ADJACENT DUPLICATES FROM lt_area COMPARING low.
+
+  REFRESH lt_func.
+
   " 读取 函数组其他信息
   SELECT
     rep~progname,
@@ -703,9 +726,10 @@ FORM frm_get_function .
     FROM reposrc AS rep
     LEFT JOIN tadir AS tad ON tad~obj_name = rep~progname
     WHERE ( " ( rep~progname LIKE 'LZ%' AND rep~subc = 'I' AND rep~appl = '' ) " 索引页
-            ( rep~progname LIKE 'LZ%' AND rep~rstat = 'S' ) " 索引页 + RFC
-         OR ( rep~progname LIKE 'LZ%' AND rep~subc = 'I' AND rep~appl = 'S' AND rep~dbapl = '' )  " O/I/F
-         OR ( rep~progname LIKE 'LZ%TOP' AND rep~subc = 'I' AND rep~appl = 'S' ) ) " TOP
+            ( rep~rstat = 'S' ) " 索引页 + RFC
+         OR ( rep~subc = 'I' AND rep~appl = 'S' AND rep~dbapl = '' )  " O/I/F
+         OR ( rep~subc = 'I' AND rep~appl = 'S' ) ) " TOP
+      AND rep~progname IN @lt_area
       AND rep~r3state = 'A'
       AND tad~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_list).
@@ -941,10 +965,8 @@ FORM frm_get_class .
     changedon,
     CAST( '000000' AS TIMS ) AS changetm
     FROM vseoclass AS ss
-    INNER JOIN tadir AS ta ON ta~obj_name = ss~clsname
-    WHERE "langu = @sy-langu " 语言会限制内容
-          ( ( clsname LIKE 'ZC%' OR clsname LIKE 'YC%' )
-       OR ( clsname LIKE 'ZHD%' OR clsname LIKE 'YHD%' ) )
+    INNER JOIN tadir AS ta ON ta~obj_name = ss~clsname AND ta~object = 'CLAS'
+    WHERE ta~obj_name IN @gt_range_objname
       AND version = '1' " 激活
       AND ( state = '0' OR state = '1' )
       AND ta~devclass IN @gt_range_devclass
@@ -1240,7 +1262,7 @@ FORM frm_get_ddl .
     LEFT JOIN ddddlsrct AS ct ON ct~ddlname = rc~ddlname
                              AND ct~ddlanguage = '1'
                                AND ct~as4local = rc~as4local
-    WHERE rc~ddlname LIKE 'Z%'
+    WHERE ta~obj_name IN @gt_range_objname "rc~ddlname
       AND rc~as4local = 'A'
       AND ta~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_ddlsrc).
@@ -1747,7 +1769,7 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
    dd~as4time
    FROM dd02l AS dd
    INNER JOIN tadir AS ta ON dd~tabname = ta~obj_name
-   WHERE dd~tabname LIKE 'Z%'
+   WHERE ta~obj_name IN @gt_range_objname "dd~tabname
      AND dd~tabclass = @p_type
      AND dd~as4local = 'A'
      AND ta~pgmid = 'R3TR'
@@ -2177,7 +2199,7 @@ FORM frm_get_domain .
       AND ta~object = 'DOMA'
       AND ta~devclass IN @gt_range_devclass
       AND dd~as4local = 'A'
-      AND dd~domname  LIKE 'Z%'
+      AND ta~obj_name IN @gt_range_objname " dd~domname
       AND dd~as4user <> 'SAP'
     INTO TABLE @DATA(lt_dd01l).
 
@@ -2354,7 +2376,7 @@ FORM frm_get_element .
       AND ta~object = 'DTEL'
       AND ta~devclass IN @gt_range_devclass
       AND dd~as4local = 'A'
-      AND dd~rollname  LIKE 'Z%'
+      AND ta~obj_name IN @gt_range_objname " dd~rollname
       AND dd~as4user <> 'SAP'
     INTO TABLE @DATA(lt_dd04l).
 
@@ -2491,7 +2513,7 @@ FORM frm_get_tabletypes.
       AND ta~object = 'TTYP'
       AND ta~devclass IN @gt_range_devclass
       AND dd~as4local = 'A'
-      AND dd~typename  LIKE 'Z%'
+      AND ta~obj_name IN @gt_range_objname "dd~typename
     INTO TABLE @DATA(lt_dd40l).
 
   lr_pb->count = lines( lt_dd40l ).
@@ -2629,7 +2651,8 @@ FORM frm_get_smw0 .
     FROM wwwdata
    WHERE srtf2 = 0
      AND relid = 'MI'
-     AND objid LIKE 'Z%'
+     AND ( objid LIKE 'Z%'
+      OR objid LIKE 'Y%' )
     INTO TABLE @DATA(lt_smw0).
   IF sy-subrc <> 0.
     " 未找到数据不进行下载
@@ -2643,7 +2666,8 @@ FORM frm_get_smw0 .
     value
     FROM wwwparams
     WHERE relid = 'MI'
-      AND objid LIKE 'Z%'
+      AND ( objid LIKE 'Z%'
+      OR objid LIKE 'Y%' )
     INTO TABLE @DATA(lt_param).
 
   SORT lt_smw0 BY objid.
@@ -2773,7 +2797,7 @@ FORM frm_get_tcode .
     WHERE ta~pgmid = 'R3TR'
       AND ta~object = 'TRAN'
       AND ta~devclass IN @gt_range_devclass
-      AND tc~tcode LIKE 'Z%'
+      AND ta~obj_name IN @gt_range_objname " tc~tcode
     INTO TABLE @DATA(lt_tstc).
 
   LOOP AT lt_tstc INTO DATA(ls_tstc).
@@ -2841,7 +2865,7 @@ FORM frm_get_strans .
     INNER JOIN o2xsltdesc AS o2 ON ta~obj_name = o2~xsltdesc
     WHERE ta~pgmid = 'R3TR'
       AND ta~object = 'XSLT'
-      AND ta~obj_name LIKE 'Z%'
+      AND ta~obj_name IN @gt_range_objname
       AND ta~devclass IN @gt_range_devclass
       AND o2~state = 'A'
       AND o2~relid = 'TR'
