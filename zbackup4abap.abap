@@ -86,6 +86,9 @@ DATA: gt_delt_log TYPE TABLE OF ty_delt_log.
 
 DATA: gt_range_objname TYPE RANGE OF tadir-obj_name.
 
+DATA: gv_delta_store_id TYPE char30.
+CONSTANTS: gc_delta_store_id_fix_part TYPE char18 VALUE 'DeltaDownload'.
+
 *&----------------------------------------------------------------------
 *                     Select Screen
 *&----------------------------------------------------------------------
@@ -347,8 +350,11 @@ FORM frm_init_variables .
                                                        ( low = 'Y*' ) ).
 
   " 增量数据获取
+  gv_delta_store_id = gc_delta_store_id_fix_part && sy-uname.
+
   IF p_delt = 'X'.
-    IMPORT gt_delt_log FROM DATABASE demo_indx_blob(zd) ID 'DeltaDownload'.
+    " DeltaDownload && SY-UNAME
+    IMPORT gt_delt_log FROM DATABASE demo_indx_blob(zd) ID gv_delta_store_id.
     SORT gt_delt_log BY object.
 
     " 时间减3s
@@ -2622,7 +2628,8 @@ FORM frm_get_others .
   IF p_delt = 'X'.
     ls_blob-userid = sy-uname.
     GET TIME STAMP FIELD ls_blob-timestamp.
-    EXPORT gt_delt_log TO DATABASE demo_indx_blob(zd) FROM ls_blob ID 'DeltaDownload'.
+    " gv_delta_store_id && SY-UNAME
+    EXPORT gt_delt_log TO DATABASE demo_indx_blob(zd) FROM ls_blob ID gv_delta_store_id.
   ENDIF.
 
 ENDFORM.
