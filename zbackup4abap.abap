@@ -358,6 +358,119 @@ FORM frm_init_variables .
   ENDIF.
 ENDFORM.
 *&---------------------------------------------------------------------*
+*& Form frm_get_folder_name
+*&---------------------------------------------------------------------*
+*&  获取文件名
+*&---------------------------------------------------------------------*
+FORM frm_get_folder_name USING p_type TYPE char2
+                               p_name
+                               p_folder.
+* MG|[RBM]_
+  DATA: lv_name  TYPE string,
+        lv_regex TYPE string.
+
+  lv_name = p_name.
+
+  CLEAR p_folder.
+
+  DATA: lv_folder TYPE ty_folder-tag.
+
+  CASE p_type+0(1).
+    WHEN 'R'. " report
+      " mg 结尾 或 R/B 结尾 或 M 结尾
+      lv_regex = `(MG|[RB]|M)_`.
+
+      SPLIT lv_name AT '_' INTO TABLE DATA(lt_split_name).
+      " IF sy-subrc <> 0.
+      "   RETURN.
+      " ENDIF.
+
+      IF lines( lt_split_name ) <> 1.
+        READ TABLE lt_split_name INTO DATA(lv_split_name) INDEX 1.
+        lv_split_name = lv_split_name && '_'.
+
+        FIND PCRE lv_regex IN lv_split_name
+          MATCH OFFSET DATA(l_off)
+          MATCH LENGTH DATA(l_len).
+        IF sy-subrc = 0.
+          l_off = l_off - 1.
+          lv_folder = lv_split_name+1(l_off).
+        ELSE.
+          lv_folder = lv_name+1(2).
+        ENDIF.
+      ELSE.
+        " 无下划线
+        lv_regex = `(MG|[RB]|M)$`.
+
+        FIND PCRE lv_regex IN lv_name
+          MATCH OFFSET l_off
+          MATCH LENGTH l_len.
+        IF sy-subrc = 0.
+          l_off -= l_off.
+          lv_folder = lv_name+1(l_off).
+        ELSE.
+          lv_folder = lv_name+1(2).
+          IF p_type+1(1) = 'I' AND lv_folder+0(1) = 'X'.
+            " 包含程序
+            p_folder = lv_folder+0(1).
+          ENDIF.
+        ENDIF.
+      ENDIF.
+
+    WHEN 'F'.
+      lv_regex = `ZFM_.+?_|ZFM.+?_`.
+
+      FIND PCRE lv_regex IN lv_name
+        MATCH OFFSET l_off
+        MATCH LENGTH l_len.
+      IF sy-subrc = 0.
+        lv_name = substring( val = lv_name off = l_off len = l_len ).
+        lv_name = replace( val = lv_name pcre = '^ZFM' with = '' ).
+        lv_name = replace( val = lv_name sub = '_' with = '' occ = 0 ).
+        lv_folder = lv_name.
+      ENDIF.
+
+    WHEN 'T'.
+      lv_regex = `ZT\w+`.
+
+      FIND PCRE lv_regex IN lv_name
+        MATCH OFFSET l_off
+        MATCH LENGTH l_len.
+      IF sy-subrc = 0.
+        lv_name = substring( val = lv_name off = l_off len = l_len ).
+        lv_name = replace( val = lv_name pcre = '^ZT' with = '' ).
+        lv_folder = lv_name.
+      ENDIF.
+
+    WHEN 'D'. " ddl 视图
+      lv_regex = `ZV.*?_`.
+
+      FIND PCRE lv_regex IN lv_name
+        MATCH OFFSET l_off
+        MATCH LENGTH l_len.
+      IF sy-subrc = 0.
+        lv_name = substring( val = lv_name off = l_off len = l_len ).
+        lv_name = replace( val = lv_name pcre = '^ZV' with = '' ).
+        lv_name = replace( val = lv_name sub = '_' with = '' ).
+        lv_folder = lv_name.
+      ENDIF.
+
+    WHEN OTHERS.
+  ENDCASE.
+
+  READ TABLE gt_folder INTO DATA(ls_folder) WITH KEY tag = lv_folder BINARY SEARCH.
+  IF sy-subrc = 0.
+
+    IF ls_folder-folder IS INITIAL.
+      p_folder = ls_folder-tag.
+    ELSE.
+      p_folder = ls_folder-folder.
+    ENDIF.
+
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
 *& Form frm_get_code
 *&---------------------------------------------------------------------*
 *&  获取代码数据
@@ -2028,119 +2141,6 @@ FORM frm_get_xx_ddl USING p_type TYPE tabclass pr_ddl TYPE REF TO lcl_export_ddl
     ENDIF.
 
   ENDLOOP.
-
-ENDFORM.
-*&---------------------------------------------------------------------*
-*& Form frm_get_folder_name
-*&---------------------------------------------------------------------*
-*&  获取文件名
-*&---------------------------------------------------------------------*
-FORM frm_get_folder_name USING p_type TYPE char2
-                               p_name
-                               p_folder.
-* MG|[RBM]_
-  DATA: lv_name  TYPE string,
-        lv_regex TYPE string.
-
-  lv_name = p_name.
-
-  CLEAR p_folder.
-
-  DATA: lv_folder TYPE ty_folder-tag.
-
-  CASE p_type+0(1).
-    WHEN 'R'.
-      " mg 结尾 或 R/B 结尾 或 M 结尾
-      lv_regex = `(MG|[RB]|M)_`.
-
-      SPLIT lv_name AT '_' INTO TABLE DATA(lt_split_name).
-      " IF sy-subrc <> 0.
-      "   RETURN.
-      " ENDIF.
-
-      IF lines( lt_split_name ) <> 1.
-        READ TABLE lt_split_name INTO DATA(lv_split_name) INDEX 1.
-        lv_split_name = lv_split_name && '_'.
-
-        FIND PCRE lv_regex IN lv_split_name
-          MATCH OFFSET DATA(l_off)
-          MATCH LENGTH DATA(l_len).
-        IF sy-subrc = 0.
-          l_off = l_off - 1.
-          lv_folder = lv_split_name+1(l_off).
-        ELSE.
-          lv_folder = lv_name+1(2).
-        ENDIF.
-      ELSE.
-        " 无下划线
-        lv_regex = `(MG|[RB]|M)$`.
-
-        FIND PCRE lv_regex IN lv_name
-          MATCH OFFSET l_off
-          MATCH LENGTH l_len.
-        IF sy-subrc = 0.
-          l_off -= l_off.
-          lv_folder = lv_name+1(l_off).
-        ELSE.
-          lv_folder = lv_name+1(2).
-          IF p_type+1(1) = 'I' AND lv_folder+0(1) = 'X'.
-            " 包含程序
-            p_folder = lv_folder+0(1).
-          ENDIF.
-        ENDIF.
-      ENDIF.
-
-    WHEN 'F'.
-      lv_regex = `ZFM_.+?_|ZFM.+?_`.
-
-      FIND PCRE lv_regex IN lv_name
-        MATCH OFFSET l_off
-        MATCH LENGTH l_len.
-      IF sy-subrc = 0.
-        lv_name = substring( val = lv_name off = l_off len = l_len ).
-        lv_name = replace( val = lv_name pcre = '^ZFM' with = '' ).
-        lv_name = replace( val = lv_name sub = '_' with = '' occ = 0 ).
-        lv_folder = lv_name.
-      ENDIF.
-
-    WHEN 'T'.
-      lv_regex = `ZT\w+`.
-
-      FIND PCRE lv_regex IN lv_name
-        MATCH OFFSET l_off
-        MATCH LENGTH l_len.
-      IF sy-subrc = 0.
-        lv_name = substring( val = lv_name off = l_off len = l_len ).
-        lv_name = replace( val = lv_name pcre = '^ZT' with = '' ).
-        lv_folder = lv_name.
-      ENDIF.
-
-    WHEN 'D'.
-      lv_regex = `ZV.*?_`.
-
-      FIND PCRE lv_regex IN lv_name
-        MATCH OFFSET l_off
-        MATCH LENGTH l_len.
-      IF sy-subrc = 0.
-        lv_name = substring( val = lv_name off = l_off len = l_len ).
-        lv_name = replace( val = lv_name pcre = '^ZV' with = '' ).
-        lv_name = replace( val = lv_name sub = '_' with = '' ).
-        lv_folder = lv_name.
-      ENDIF.
-
-    WHEN OTHERS.
-  ENDCASE.
-
-  READ TABLE gt_folder INTO DATA(ls_folder) WITH KEY tag = lv_folder BINARY SEARCH.
-  IF sy-subrc = 0.
-
-    IF ls_folder-folder IS INITIAL.
-      p_folder = ls_folder-tag.
-    ELSE.
-      p_folder = ls_folder-folder.
-    ENDIF.
-
-  ENDIF.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
