@@ -732,17 +732,19 @@ FORM frm_get_function .
   ENDLOOP.
 
   " 更新人获取
-  SELECT
-    progname,
-    unam,
-    udat,
-    utime
-    FROM reposrc
-    FOR ALL ENTRIES IN @lt_func
-    WHERE progname = @lt_func-reportname
-      AND appl = 'S'
-    INTO TABLE @DATA(lt_rep).
-  SORT lt_rep BY progname.
+  IF lt_func IS NOT INITIAL.
+    SELECT
+      progname,
+      unam,
+      udat,
+      utime
+      FROM reposrc
+      FOR ALL ENTRIES IN @lt_func
+      WHERE progname = @lt_func-reportname
+        AND appl = 'S'
+      INTO TABLE @DATA(lt_rep).
+    SORT lt_rep BY progname.
+  ENDIF.
 
   DATA: ls_delt_log LIKE LINE OF gt_delt_log.
   READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'FUNC' BINARY SEARCH.
@@ -811,6 +813,8 @@ FORM frm_get_function .
   ENDLOOP.
 
   " --> more
+  CHECK lt_func IS NOT INITIAL.
+
   DATA: lt_area TYPE RANGE OF reposrc-progname.
   LOOP AT lt_func INTO DATA(ls_area).
     APPEND VALUE #( sign = 'I' option = 'CP' low = |L{ ls_area-functiongroup }*| ) TO lt_area.
