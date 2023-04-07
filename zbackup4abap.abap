@@ -371,9 +371,14 @@ ENDFORM.
 FORM frm_get_folder_name USING p_type TYPE char2
                                p_name
                                p_folder.
-* MG|[RBM]_
+
+  " 由于 PCRE 在 755 后才引入，针对之前版本需要调整正则逻辑
+
   DATA: lv_name  TYPE string,
         lv_regex TYPE string.
+
+  DATA: l_off TYPE i,
+        l_len TYPE i.
 
   lv_name = p_name.
 
@@ -383,83 +388,64 @@ FORM frm_get_folder_name USING p_type TYPE char2
 
   CASE p_type+0(1).
     WHEN 'R'. " report
-      " mg 结尾 或 R/B 结尾 或 M 结尾
-      lv_regex = `(MG|[RB]|M)_`.
+      " 1. 清除 _ 后的所有内容
+      " 2. 正则匹配（为兼容不能使用PCRE 贪婪模式）
+      "   - MG/[RBM] 结尾内容（不含MM）
+      "   - 特殊（直接截取）
 
-      SPLIT lv_name AT '_' INTO TABLE DATA(lt_split_name).
-      " IF sy-subrc <> 0.
-      "   RETURN.
-      " ENDIF.
+      " 通过 REPLACE 替换内容
+      REPLACE REGEX `_.*$` IN lv_name WITH ''.
 
-      IF lines( lt_split_name ) <> 1.
-        READ TABLE lt_split_name INTO DATA(lv_split_name) INDEX 1.
-        lv_split_name = lv_split_name && '_'.
-
-        FIND PCRE lv_regex IN lv_split_name
-          MATCH OFFSET DATA(l_off)
-          MATCH LENGTH DATA(l_len).
-        IF sy-subrc = 0.
-          l_off = l_off - 1.
-          lv_folder = lv_split_name+1(l_off).
-        ELSE.
-          lv_folder = lv_name+1(2).
-        ENDIF.
+      " 匹配内容
+      FIND REGEX `MG$` IN lv_name
+        MATCH OFFSET l_off
+        MATCH LENGTH l_len.
+      IF sy-subrc = 0.
+        l_off = l_off - 1. " 匹配到内容减去 `Z`
+        lv_folder = lv_name+1(l_off).
       ELSE.
-        " 无下划线
-        lv_regex = `(MG|[RB]|M)$`.
-
-        FIND PCRE lv_regex IN lv_name
+        "
+        FIND REGEX `([RB]|[^M]M)$` IN lv_name
           MATCH OFFSET l_off
           MATCH LENGTH l_len.
         IF sy-subrc = 0.
-          l_off -= l_off.
+          l_off = COND #( WHEN l_len = 1 THEN l_off - 1 " 匹配到内容减去 `Z`
+                                         ELSE l_off ).  " 匹配到内容 -1 + 1
           lv_folder = lv_name+1(l_off).
         ELSE.
-          lv_folder = lv_name+1(2).
-          IF p_type+1(1) = 'I' AND lv_folder+0(1) = 'X'.
-            " 包含程序
-            p_folder = lv_folder+0(1).
+          IF strlen( lv_name ) >= 3.
+            lv_folder = lv_name+1(2).
           ENDIF.
         ENDIF.
+
       ENDIF.
 
     WHEN 'F'.
-      lv_regex = `ZFM_.+?_|ZFM.+?_`.
+      " 1. 清除 ^ZFM_?|^Z
+      " 2. 清除 _ 后的所有内容
 
-      FIND PCRE lv_regex IN lv_name
-        MATCH OFFSET l_off
-        MATCH LENGTH l_len.
-      IF sy-subrc = 0.
-        lv_name = substring( val = lv_name off = l_off len = l_len ).
-        lv_name = replace( val = lv_name pcre = '^ZFM' with = '' ).
-        lv_name = replace( val = lv_name sub = '_' with = '' occ = 0 ).
-        lv_folder = lv_name.
-      ENDIF.
+      REPLACE REGEX `^ZFM_?|^Z` IN lv_name WITH ''.
+      REPLACE REGEX `_.*$` IN lv_name WITH ''.
+
+      lv_folder = lv_name.
 
     WHEN 'T'.
-      lv_regex = `ZT\w+`.
+      " 1. 清除 `^ZT`
+      " 2. 清除 `T[\d_]*$`
 
-      FIND PCRE lv_regex IN lv_name
-        MATCH OFFSET l_off
-        MATCH LENGTH l_len.
-      IF sy-subrc = 0.
-        lv_name = substring( val = lv_name off = l_off len = l_len ).
-        lv_name = replace( val = lv_name pcre = '^ZT' with = '' ).
-        lv_folder = lv_name.
-      ENDIF.
+      REPLACE REGEX `^ZT|^Z` IN lv_name WITH ''.
+      REPLACE REGEX `T[\d_]*$` IN lv_name WITH ''.
+
+      lv_folder = lv_name.
 
     WHEN 'D'. " ddl 视图
-      lv_regex = `ZV.*?_`.
+      " 1. 清除 `^ZV`
+      " 2. 清除 `_.*$`
 
-      FIND PCRE lv_regex IN lv_name
-        MATCH OFFSET l_off
-        MATCH LENGTH l_len.
-      IF sy-subrc = 0.
-        lv_name = substring( val = lv_name off = l_off len = l_len ).
-        lv_name = replace( val = lv_name pcre = '^ZV' with = '' ).
-        lv_name = replace( val = lv_name sub = '_' with = '' ).
-        lv_folder = lv_name.
-      ENDIF.
+      REPLACE REGEX `^ZV|^Z` IN lv_name WITH ''.
+      REPLACE REGEX `_.*$` IN lv_name WITH ''.
+
+      lv_folder = lv_name.
 
     WHEN OTHERS.
   ENDCASE.
@@ -611,7 +597,7 @@ FORM frm_get_report .
     PERFORM frm_get_folder_name USING lv_c_flag ls_list-progname lv_folder.
 
     IF ls_list-subc = 'I'.
-      IF lv_folder+0(1) = 'X'.
+      IF ls_list-progname+1(1) = 'X'.
         " 特殊
         lv_filename = |CMOD/{ ls_list-progname }.{ gc_extension_name }|.
       ELSE.
@@ -1176,6 +1162,9 @@ FORM frm_get_class .
     ENDIF.
     IF ls_class-clsname+4(2) = 'SI'.
       lv_filename = 'IF/' && lv_filename.
+    ENDIF.
+    IF ls_class-clsname+1(2) = 'BP'.
+      lv_filename = 'BP/' && lv_filename.
     ENDIF.
 
     "ls_class_key-classnamelength = strlen( ls_class-clsname ).
