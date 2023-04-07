@@ -237,7 +237,7 @@ AT SELECTION-SCREEN.
 START-OF-SELECTION.
 
   IF s_pack[] IS NOT INITIAL.
-    gt_range_devclass = VALUE #( FOR _ IN s_pack[] ( _ ) ).
+    PERFORM frm_fix_packages.
   ENDIF.
 
   PERFORM frm_check.
@@ -2955,3 +2955,52 @@ CLASS lcl_progress_bar IMPLEMENTATION.
         text       = lv_text.
   ENDMETHOD.
 ENDCLASS.
+*&---------------------------------------------------------------------*
+*& Form FRM_FIX_PACKAGES
+*&---------------------------------------------------------------------*
+*&  补全子包
+*&---------------------------------------------------------------------*
+FORM frm_fix_packages .
+
+  SELECT
+    devclass
+    FROM tdevc
+    WHERE devclass IN @s_pack[]
+    INTO TABLE @DATA(lt_tdev).
+
+  IF lt_tdev IS INITIAL.
+    MESSAGE '请填写正确的包名' TYPE 'S' DISPLAY LIKE 'E'.
+    STOP.
+  ENDIF.
+
+  LOOP AT lt_tdev INTO DATA(ls_tdev).
+
+    APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_tdev-devclass ) TO gt_range_devclass.
+    PERFORM frm_fix_package USING ls_tdev-devclass.
+
+  ENDLOOP.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form FRM_FIX_PACKAGE
+*&---------------------------------------------------------------------*
+*& 补全子包=>递归
+*&---------------------------------------------------------------------*
+FORM frm_fix_package USING p_devclass TYPE tdevc-parentcl.
+
+  SELECT
+    devclass,
+    parentcl
+    FROM tdevc
+    WHERE parentcl = @p_devclass
+    INTO TABLE @DATA(lt_tdev).
+  IF sy-subrc = 0.
+    LOOP AT lt_tdev INTO DATA(ls_tdev).
+      APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_tdev-devclass ) TO gt_range_devclass.
+
+      PERFORM frm_fix_package USING ls_tdev-devclass.
+    ENDLOOP.
+  ENDIF.
+
+ENDFORM.
