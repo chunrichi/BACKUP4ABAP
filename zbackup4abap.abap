@@ -424,7 +424,7 @@ FORM frm_get_folder_name USING p_type TYPE char2
       " 1. 清除 ^ZFM_?|^Z
       " 2. 清除 _ 后的所有内容
 
-      REPLACE REGEX `^ZFM_?|^Z` IN lv_name WITH ''.
+      REPLACE REGEX `^[YZ]FM_?|^[YZ]` IN lv_name WITH ''.
       REPLACE REGEX `_.*$` IN lv_name WITH ''.
 
       lv_folder = lv_name.
@@ -433,7 +433,7 @@ FORM frm_get_folder_name USING p_type TYPE char2
       " 1. 清除 `^ZT`
       " 2. 清除 `T[\d_]*$`
 
-      REPLACE REGEX `^ZT|^Z` IN lv_name WITH ''.
+      REPLACE REGEX `^[YZ]T|^[YZ]` IN lv_name WITH ''.
       REPLACE REGEX `T[\d_]*$` IN lv_name WITH ''.
 
       lv_folder = lv_name.
@@ -442,7 +442,7 @@ FORM frm_get_folder_name USING p_type TYPE char2
       " 1. 清除 `^ZV`
       " 2. 清除 `_.*$`
 
-      REPLACE REGEX `^ZV|^Z` IN lv_name WITH ''.
+      REPLACE REGEX `^[YZ]V|^[YZ]` IN lv_name WITH ''.
       REPLACE REGEX `_.*$` IN lv_name WITH ''.
 
       lv_folder = lv_name.
