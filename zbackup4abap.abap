@@ -83,6 +83,7 @@ DATA: gt_range_devclass TYPE RANGE OF tadir-devclass.
 
 "CONSTANTS: gc_newline type ABAP_CHAR1 VALUE CL_ABAP_CHAR_UTILITIES=>NEWLINE.
 CONSTANTS: gc_newline TYPE abap_cr_lf VALUE cl_abap_char_utilities=>cr_lf.
+CONSTANTS: gc_tab TYPE abap_char1 VALUE cl_abap_char_utilities=>horizontal_tab.
 
 
 DATA: gt_range_append_class TYPE RANGE OF vseoclass-clsname.
@@ -116,6 +117,12 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_clas FOR FIELD p_clas.
     PARAMETERS: p_clas AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
+  " Text
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_text FOR FIELD p_text.
+    PARAMETERS: p_text AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
 SELECTION-SCREEN END OF BLOCK blck1.
@@ -308,6 +315,7 @@ FORM frm_init_text .
   t_smw0 = 'SMW0(Z*)附件'.
   t_tran = '事务码'.
   t_xslt = '转换'.
+  t_text = '程序文本'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -503,6 +511,11 @@ FORM frm_get_code .
   IF p_clas = abap_true.
     PERFORM frm_set_parent_folder USING `SE24/`.
     PERFORM frm_get_class.
+  ENDIF.
+
+  IF p_text = abap_true.
+    PERFORM frm_set_parent_folder USING `TEXT/`.
+    PERFORM frm_get_text.
   ENDIF.
 
 ENDFORM.
@@ -1295,6 +1308,198 @@ FORM frm_get_class .
 
     REFRESH lt_str.
     CLEAR: lv_filename, lv_xstring.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_text
+*&---------------------------------------------------------------------*
+*&  程序文本
+*&---------------------------------------------------------------------*
+FORM frm_get_text .
+
+  " 程序文本
+  " 由于无法直接关联 TADIR 间接通过程序名进行处理分为三个模块
+  " SE38 \ SE37 \ SE24
+
+  DATA: lt_textpool TYPE TABLE OF textpool,
+        lv_textpool TYPE string,
+        lv_xstring  TYPE xstring.
+  DATA: ls_include TYPE progstruc.
+  DATA: lv_folder TYPE char10.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'TEXT' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'TEXT' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  SELECT
+    ta~obj_name,
+    ta~object
+    FROM tadir AS ta
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object IN ('PROG','FUGR','CLAS')
+      AND ta~obj_name IN @gt_range_objname
+      AND ta~devclass IN @gt_range_devclass
+    INTO TABLE @DATA(lt_tadir).
+
+  CHECK lt_tadir IS NOT INITIAL.
+
+  LOOP AT lt_tadir ASSIGNING FIELD-SYMBOL(<ls_tadir>) WHERE object = 'FUGR' OR object = 'CLAS'.
+
+    " CLAS
+    IF <ls_tadir>-object = 'CLAS'.
+      ls_include = VALUE #( rootname = <ls_tadir>-obj_name categorya = 'C' codea = 'P' ).
+      TRANSLATE ls_include-rootname USING ' ='.
+
+      <ls_tadir>-obj_name = ls_include.
+    ENDIF.
+
+    " FUGR
+    IF <ls_tadir>-object = 'FUGR'.
+      <ls_tadir>-obj_name = 'SAPL' && <ls_tadir>-obj_name.
+    ENDIF.
+  ENDLOOP.
+  SORT lt_tadir BY obj_name object.
+
+  SELECT
+    progname,
+    r3state,
+    language,
+    unam,
+    udat,
+    utime
+    FROM repotext
+    FOR ALL ENTRIES IN @lt_tadir
+    WHERE progname = @lt_tadir-obj_name
+      AND r3state  = 'A'
+    INTO TABLE @DATA(lt_repot).
+
+  CHECK lt_repot IS NOT INITIAL.
+
+  SELECT spras, laiso FROM t002 INTO TABLE @DATA(lt_t002).
+  SORT lt_t002 BY spras.
+
+  DATA: lv_filename TYPE string,
+        lv_language TYPE string.
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
+  lr_pb->count = lines( lt_repot ).
+  lr_pb->base_desc = 'Process Text & '.
+
+  LOOP AT lt_repot INTO DATA(ls_repot).
+    lr_pb->add( i_desc = ls_repot-progname ).
+
+    " 忽略当前程序
+    IF ls_repot-progname = sy-cprog.
+      CONTINUE.
+    ENDIF.
+
+    READ TABLE lt_tadir INTO DATA(ls_tadir) WITH KEY obj_name = ls_repot-progname BINARY SEARCH.
+    IF sy-subrc = 0. " 还原名称
+      CASE ls_tadir-object.
+        WHEN 'CLAS'.
+          lv_filename = ls_repot-progname.
+          REPLACE REGEX '=*CP$' IN lv_filename WITH ''.
+
+          PERFORM frm_get_folder_name USING 'C' lv_filename lv_folder.
+          IF lv_folder IS NOT INITIAL.
+            lv_filename = lv_folder && '/' && lv_filename.
+          ENDIF.
+
+          lv_filename = 'SE24/' && lv_filename.
+        WHEN 'FUGR'.
+          lv_filename = ls_repot-progname.
+          REPLACE REGEX '^SAPL' IN lv_filename WITH ''.
+
+          PERFORM frm_get_folder_name USING 'F' lv_filename lv_folder.
+          IF lv_folder IS NOT INITIAL.
+            lv_filename = lv_folder && '/' && lv_filename.
+          ENDIF.
+
+          lv_filename = 'SE37/' && lv_filename.
+        WHEN OTHERS.
+          lv_filename = ls_repot-progname.
+
+          PERFORM frm_get_folder_name USING 'R' ls_repot-progname lv_folder.
+          IF lv_folder IS NOT INITIAL.
+            lv_filename = lv_folder && '/' && lv_filename.
+          ENDIF.
+
+          lv_filename = 'SE38/' && lv_filename.
+      ENDCASE.
+
+      lv_filename = lv_filename && '.txt'.
+    ELSE.
+      lv_filename = ls_repot-progname && '.txt'.
+    ENDIF.
+
+    " 文件夹匹配 -> 文件名
+    READ TABLE lt_t002 INTO DATA(ls_t002) WITH KEY spras = ls_repot-language BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_filename = gv_parent_folder && |{ ls_t002-laiso }/| && lv_filename.
+    ELSE.
+      lv_filename = gv_parent_folder && lv_filename.
+    ENDIF.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'TEXT' ls_repot-progname ls_repot-unam ls_repot-udat ls_repot-utime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_repot-udat
+        OR ( ls_delt_log-ddate = ls_repot-udat AND ls_delt_log-dtime > ls_repot-utime ).
+        REFRESH lt_textpool.
+        CLEAR: lv_textpool, lv_filename, lv_xstring.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    READ TEXTPOOL ls_repot-progname LANGUAGE ls_repot-language STATE 'A' INTO lt_textpool.
+    IF sy-subrc = 0.
+      " 标题
+      CONCATENATE 'ID' gc_tab 'KEY_____' gc_tab 'ENTRY' gc_newline INTO lv_textpool.
+
+      " 内表转换为长字符串
+      LOOP AT lt_textpool INTO DATA(ls_textpool).
+        " ID
+        lv_textpool = lv_textpool && ls_textpool-id && gc_tab.
+
+        " key => 为方便好看补齐8位
+        lv_textpool = lv_textpool && |{ ls_textpool-key WIDTH = 8 }| && gc_tab.
+
+        " value
+        lv_textpool = lv_textpool && ls_textpool-entry.
+
+        " newline
+        lv_textpool = lv_textpool && gc_newline.
+      ENDLOOP.
+
+      " string -> xstring
+      gr_cover_out->convert(
+            EXPORTING data = lv_textpool
+            IMPORTING buffer = lv_xstring ).
+    ENDIF.
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    " 清除缓存
+    REFRESH lt_textpool.
+    CLEAR: lv_textpool, lv_filename, lv_xstring.
   ENDLOOP.
 
   " map 文件
