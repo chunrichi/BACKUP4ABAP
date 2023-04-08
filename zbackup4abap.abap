@@ -53,6 +53,11 @@ TYPES: BEGIN OF ty_delt_log,
          dtime  TYPE uzeit,     " 增量时间
        END OF ty_delt_log.
 
+TYPES: BEGIN OF ty_tdevc_parentcl,
+         parentcl TYPE tdevc-parentcl,
+       END OF ty_tdevc_parentcl.
+TYPES: tt_tdevc_parentcl TYPE TABLE OF ty_tdevc_parentcl.
+
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
 CLASS lcl_pretty_json DEFINITION DEFERRED.
 CLASS lcl_progress_bar DEFINITION DEFERRED.
@@ -2973,13 +2978,10 @@ FORM frm_fix_packages .
     STOP.
   ENDIF.
 
-  LOOP AT lt_tdev INTO DATA(ls_tdev).
+  gt_range_devclass = VALUE #( BASE gt_range_devclass FOR item IN lt_tdev
+    sign = 'I' option = 'EQ' ( low = item-devclass ) ).
 
-    APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_tdev-devclass ) TO gt_range_devclass.
-    PERFORM frm_fix_package USING ls_tdev-devclass.
-
-  ENDLOOP.
-
+  PERFORM frm_fix_package USING lt_tdev.
 
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -2987,20 +2989,23 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 *& 补全子包=>递归
 *&---------------------------------------------------------------------*
-FORM frm_fix_package USING p_devclass TYPE tdevc-parentcl.
+FORM frm_fix_package USING t_devclass TYPE tt_tdevc_parentcl.
+
+  CHECK t_devclass IS NOT INITIAL.
 
   SELECT
-    devclass,
-    parentcl
+    devclass
     FROM tdevc
-    WHERE parentcl = @p_devclass
+    FOR ALL ENTRIES IN @t_devclass
+    WHERE parentcl = @t_devclass-parentcl
     INTO TABLE @DATA(lt_tdev).
   IF sy-subrc = 0.
-    LOOP AT lt_tdev INTO DATA(ls_tdev).
-      APPEND VALUE #( sign = 'I' option = 'EQ' low = ls_tdev-devclass ) TO gt_range_devclass.
 
-      PERFORM frm_fix_package USING ls_tdev-devclass.
-    ENDLOOP.
+    gt_range_devclass = VALUE #( BASE gt_range_devclass FOR item IN lt_tdev
+      sign = 'I' option = 'EQ' ( low = item-devclass ) ).
+
+    PERFORM frm_fix_package USING lt_tdev.
+
   ENDIF.
 
 ENDFORM.
