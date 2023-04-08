@@ -434,6 +434,22 @@ FORM frm_get_folder_name USING p_type TYPE char2
 
       lv_folder = lv_name.
 
+    WHEN 'C'.
+      " 类 特殊判定，不走配置逻辑
+
+      IF lv_name+1(2) = 'HD'.
+        lv_folder = 'HD'.
+      ENDIF.
+      IF lv_name+4(2) = 'SI'.
+        lv_folder = 'IF/'.
+      ENDIF.
+      IF lv_name+1(2) = 'BP'.
+        lv_folder = 'BP'.
+      ENDIF.
+
+      p_folder = lv_folder.
+      RETURN.
+
     WHEN 'T'.
       " 1. 清除 `^ZT`
       " 2. 清除 `T[\d_]*$`
@@ -1044,6 +1060,7 @@ FORM frm_get_class .
         lt_source  TYPE TABLE OF text1000 WITH EMPTY KEY,
         lv_source  TYPE string,
         lv_xstring TYPE xstring.
+  DATA: lv_folder TYPE char10.
 
   DATA: lv_filename TYPE string,
         lv_more     TYPE string.
@@ -1165,15 +1182,10 @@ FORM frm_get_class .
 
     lv_filename = ls_class-clsname && '.abap'.
 
-    " >> 特殊指定
-    IF ls_class-clsname+1(2) = 'HD'.
-      lv_filename = 'HD/' && lv_filename.
-    ENDIF.
-    IF ls_class-clsname+4(2) = 'SI'.
-      lv_filename = 'IF/' && lv_filename.
-    ENDIF.
-    IF ls_class-clsname+1(2) = 'BP'.
-      lv_filename = 'BP/' && lv_filename.
+    " >> 特殊指定 -> 文件夹
+    PERFORM frm_get_folder_name USING 'C' lv_filename lv_folder.
+    IF lv_folder IS NOT INITIAL.
+      lv_filename = lv_folder && '/' && lv_filename.
     ENDIF.
 
     "ls_class_key-classnamelength = strlen( ls_class-clsname ).
