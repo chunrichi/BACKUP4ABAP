@@ -125,6 +125,12 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
     PARAMETERS: p_text AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
+  " Message Class
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_msag FOR FIELD p_msag.
+    PARAMETERS: p_msag AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
 SELECTION-SCREEN END OF BLOCK blck1.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
@@ -316,6 +322,7 @@ FORM frm_init_text .
   t_tran = '事务码'.
   t_xslt = '转换'.
   t_text = '程序文本'.
+  t_msag = '消息类'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -516,6 +523,11 @@ FORM frm_get_code .
   IF p_text = abap_true.
     PERFORM frm_set_parent_folder USING `TEXT/`.
     PERFORM frm_get_text.
+  ENDIF.
+
+  IF p_msag = abap_true.
+    PERFORM frm_set_parent_folder USING `SE91/`.
+    PERFORM frm_get_msag.
   ENDIF.
 
 ENDFORM.
@@ -1500,6 +1512,168 @@ FORM frm_get_text .
     " 清除缓存
     REFRESH lt_textpool.
     CLEAR: lv_textpool, lv_filename, lv_xstring.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form FRM_GET_MSAG
+*&---------------------------------------------------------------------*
+*&  获取消息类
+*&---------------------------------------------------------------------*
+FORM frm_get_msag .
+
+  " T100 T100U
+  TYPES: BEGIN OF ty_arbgb,
+           arbgb TYPE t100u-arbgb,
+           datum TYPE t100u-datum,
+         END OF ty_arbgb.
+  DATA: lt_arbgb TYPE TABLE OF ty_arbgb.
+
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+  DATA: lv_tabix      TYPE sytabix,
+        lv_spras      TYPE t002-spras,
+        lv_spras_last TYPE t002-spras.
+  DATA: lv_string   TYPE string,
+        lv_xstring  TYPE xstring,
+        lv_filename TYPE string.
+
+  SELECT
+    tu~arbgb,
+    tu~msgnr,
+    tu~name,
+    tu~datum,
+    tu~selfdef
+    FROM tadir AS ta
+    LEFT JOIN t100u AS tu ON tu~arbgb = ta~obj_name
+    WHERE ta~pgmid = 'R3TR'
+      AND ta~object = 'MSAG'
+      AND ta~obj_name IN @gt_range_objname
+      AND ta~devclass IN @gt_range_devclass
+    INTO TABLE @DATA(lt_t100u).
+  SORT lt_t100u BY arbgb msgnr.
+
+  CHECK lt_t100u IS NOT INITIAL.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'MSAG' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'MSAG' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  " 去重 + 时间限制
+  MOVE-CORRESPONDING lt_t100u TO lt_arbgb.
+  SORT lt_arbgb BY arbgb datum DESCENDING.
+  DELETE ADJACENT DUPLICATES FROM lt_arbgb COMPARING arbgb.
+
+  IF p_delt = 'X'.
+    DELETE lt_arbgb WHERE datum < ls_delt_log-ddate.
+  ENDIF.
+
+  SELECT
+    arbgb,
+    msgnr,
+    sprsl,
+    text
+    FROM t100
+    FOR ALL ENTRIES IN @lt_t100u
+    WHERE arbgb = @lt_t100u-arbgb
+      AND msgnr = @lt_t100u-msgnr
+    INTO TABLE @DATA(lt_t100).
+  SORT lt_t100 BY arbgb msgnr sprsl.
+
+  SELECT spras, laiso FROM t002 INTO TABLE @DATA(lt_t002).
+  SORT lt_t002 BY spras.
+  DATA: ls_t002 LIKE LINE OF lt_t002.
+
+  CREATE OBJECT lr_pb.
+
+  lr_pb->count = lines( lt_arbgb ).
+  lr_pb->base_desc = 'Process Message Class & '.
+
+  DEFINE mc_process.
+    " 文件名
+    READ TABLE lt_t002 INTO ls_t002 WITH KEY spras = ls_t100-sprsl BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_filename = ls_t002-laiso && '/' && ls_arbgb-arbgb && '.txt'.
+    ELSE.
+      lv_filename = ls_arbgb-arbgb && '.txt'.
+    ENDIF.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " 内容标题
+    CONCATENATE 'KEY' gc_tab 'CHANGER_____' gc_tab 'CDATUM__' gc_tab 'T' gc_tab 'TEXT' gc_newline lv_string INTO lv_string.
+
+    " string -> xstring
+    gr_cover_out->convert(
+          EXPORTING data = lv_string
+          IMPORTING buffer = lv_xstring ).
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    CLEAR: lv_string, lv_xstring, lv_filename.
+  END-OF-DEFINITION.
+
+  LOOP AT lt_arbgb INTO DATA(ls_arbgb).
+    lr_pb->add( i_desc = ls_arbgb-arbgb ).
+
+    READ TABLE lt_t100 TRANSPORTING NO FIELDS WITH KEY arbgb = ls_arbgb-arbgb BINARY SEARCH.
+    IF sy-subrc = 0.
+      lv_tabix = sy-tabix.
+
+      LOOP AT lt_t100 INTO DATA(ls_t100) FROM lv_tabix.
+        IF ls_t100-arbgb <> ls_arbgb-arbgb.
+          EXIT.
+        ENDIF.
+
+        IF lv_spras IS INITIAL.
+          lv_spras = ls_t100-sprsl.
+        ENDIF.
+
+        " 多个语言
+        IF lv_spras IS NOT INITIAL AND lv_spras <> ls_t100-sprsl.
+          lv_spras_last = lv_spras.
+          lv_spras = ls_t100-sprsl.
+
+          mc_process.
+        ENDIF.
+
+        " 消息编号
+        lv_string = lv_string && ls_t100-msgnr && gc_tab.
+
+        READ TABLE lt_t100u INTO DATA(ls_t100u) WITH KEY arbgb = ls_t100-arbgb msgnr = ls_t100-msgnr BINARY SEARCH.
+        " 修改人
+        lv_string = lv_string && |{ ls_t100u-name WIDTH = 12 }| && gc_tab.
+
+        " 修改时间
+        lv_string = lv_string && ls_t100u-datum && gc_tab.
+
+        " 类型
+        lv_string = lv_string && ls_t100u-selfdef && gc_tab.
+
+        " 内容
+        lv_string = lv_string && ls_t100-text && gc_newline.
+
+      ENDLOOP.
+
+      " 多个语言 最后一个
+      IF lv_spras_last <> lv_spras.
+        mc_process.
+      ENDIF.
+
+    ENDIF.
+
+    CLEAR: lv_spras, lv_spras_last, lv_tabix.
   ENDLOOP.
 
   " map 文件
