@@ -920,6 +920,10 @@ FORM frm_get_function .
         lv_filename = gv_parent_folder && `Rfc/` && lv_filename.
       WHEN '$'.
         lv_filename = gv_parent_folder && `Rfc/Unit/` && lv_filename.
+      WHEN 'U'.
+        " 和上面的取值重复
+        CLEAR: lv_filename, lv_str_len.
+        CONTINUE.
       WHEN OTHERS.
         lv_filename = gv_parent_folder && `More/` && lv_filename.
     ENDCASE.
