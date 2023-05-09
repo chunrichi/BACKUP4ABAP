@@ -33,6 +33,12 @@ var Plt PrintList
 
 func ReadFile(pwd string) []KeyValue {
 
+	_, err := os.Stat(pwd)
+	if err != nil {
+		fmt.Println(pwd, " no exists")
+		return nil
+	}
+
 	abapTables := []KeyValue{}
 
 	Plt.Init([]string{
@@ -49,6 +55,9 @@ func ReadFile(pwd string) []KeyValue {
 
 	// fmt.Println("\n处理文件: ")
 	filepath.Walk(pwd, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
 
 		if !info.IsDir() {
 			// fmt.Println(path) //打印path信息
