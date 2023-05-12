@@ -356,6 +356,9 @@ FORM frm_init_variables .
   " 文件目录
   gt_folder = VALUE #( ( tag = 'MM' ) ( tag = 'PP' )
                        ( tag = 'SD' ) ( tag = 'FI' ) ( tag = 'FICO' folder = 'FI' )
+                       ( tag = 'HR' )
+                       ( tag = 'TEST' )
+                       ( tag = 'DEMO' )
                        ( tag = 'HD' )   " 汉得包
                        ( tag = 'TX' )   " 推送测试平台类
                        ( tag = 'API' )  " 接口处理
@@ -427,7 +430,7 @@ FORM frm_get_folder_name USING p_type TYPE char2
         lv_folder = lv_name+1(l_off).
       ELSE.
         "
-        FIND REGEX `([RB]|[^M]M)$` IN lv_name
+        FIND REGEX `([B]|[^M]M|[^H]R)$` IN lv_name
            MATCH OFFSET l_off
            MATCH LENGTH l_len.
         IF sy-subrc = 0.
