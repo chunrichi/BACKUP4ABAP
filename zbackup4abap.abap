@@ -411,6 +411,8 @@ FORM frm_get_folder_name USING p_type TYPE char2
       " 1. 清除 _ 后的所有内容
       " 2. 正则匹配（为兼容不能使用PCRE 贪婪模式）
       "   - MG/[RBM] 结尾内容（不含MM）
+      "   - B/E +数字 +拷贝标识 结尾
+      "   - M/R/F +数字 +拷贝标识 结尾
       "   - 特殊（直接截取）
 
       " 通过 REPLACE 替换内容
@@ -426,16 +428,34 @@ FORM frm_get_folder_name USING p_type TYPE char2
       ELSE.
         "
         FIND REGEX `([RB]|[^M]M)$` IN lv_name
-          MATCH OFFSET l_off
-          MATCH LENGTH l_len.
+           MATCH OFFSET l_off
+           MATCH LENGTH l_len.
         IF sy-subrc = 0.
           l_off = COND #( WHEN l_len = 1 THEN l_off - 1 " 匹配到内容减去 `Z`
                                          ELSE l_off ).  " 匹配到内容 -1 + 1
           lv_folder = lv_name+1(l_off).
         ELSE.
-          IF strlen( lv_name ) >= 3.
-            lv_folder = lv_name+1(2).
+          FIND REGEX `[BE]\d+[A-Z]?$` IN lv_name
+            MATCH OFFSET l_off
+            MATCH LENGTH l_len.
+          IF sy-subrc = 0.
+            lv_folder = lv_name+0(l_off).
+            REPLACE REGEX `^[YZ]` IN lv_folder WITH ''.
+          ELSE.
+            FIND REGEX `([^M]M|[^H]R|[^F]I)\d+[A-Z]?$` IN lv_name
+              MATCH OFFSET l_off
+              MATCH LENGTH l_len.
+            IF sy-subrc = 0.
+              l_off = l_off + 1.
+              lv_folder = lv_name+0(l_off).
+              REPLACE REGEX `^[YZ]` IN lv_folder WITH ''.
+            ELSE.
+              IF strlen( lv_name ) >= 3.
+                lv_folder = lv_name+1(2).
+              ENDIF.
+            ENDIF.
           ENDIF.
+
         ENDIF.
 
       ENDIF.
