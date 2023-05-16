@@ -902,14 +902,12 @@ FORM frm_get_function .
     rep~udat,
     rep~utime
     FROM reposrc AS rep
-    LEFT JOIN tadir AS tad ON tad~obj_name = rep~progname
     WHERE ( " ( rep~progname LIKE 'LZ%' AND rep~subc = 'I' AND rep~appl = '' ) " 索引页
             ( rep~rstat = 'S' ) " 索引页 + RFC
          OR ( rep~subc = 'I' AND rep~appl = 'S' AND rep~dbapl = '' )  " O/I/F
          OR ( rep~subc = 'I' AND rep~appl = 'S' ) ) " TOP
       AND rep~progname IN @lt_area
       AND rep~r3state = 'A'
-      AND tad~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_list).
   SORT lt_list BY progname.
 
@@ -3299,7 +3297,7 @@ FORM frm_get_strans .
   SORT lt_xslt BY xsltdesc srtf2.
 
   LOOP AT lt_xslt ASSIGNING FIELD-SYMBOL(<ls_xslt>).
-    lv_xstr_xslt &&= <ls_xslt>-clustd.
+    lv_xstr_xslt = lv_xstr_xslt && <ls_xslt>-clustd.
 
     AT END OF xsltdesc.
 
@@ -3356,10 +3354,15 @@ CLASS lcl_progress_bar IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD add.
+    DATA: lv_percent_old TYPE i.
 
     me->curr = me->curr + i_add.
 
+    lv_percent_old = me->percent.
+
     me->percent = me->curr / me->count * 100.
+
+    CHECK lv_percent_old <> me->percent.
 
     me->display( i_desc ).
 
