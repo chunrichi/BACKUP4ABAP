@@ -295,7 +295,8 @@ CLASS lcl_progress_bar DEFINITION.
     METHODS add IMPORTING i_add  TYPE i DEFAULT 1
                           i_desc TYPE data OPTIONAL.
   PRIVATE SECTION.
-    DATA: percent TYPE p DECIMALS 2 LENGTH 5.
+    DATA: percent     TYPE p DECIMALS 0 LENGTH 5,
+          percent_old TYPE p DECIMALS 0 LENGTH 5.
     METHODS display IMPORTING desc TYPE data.
 ENDCLASS.
 
@@ -3354,15 +3355,14 @@ CLASS lcl_progress_bar IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD add.
-    DATA: lv_percent_old TYPE i.
 
     me->curr = me->curr + i_add.
 
-    lv_percent_old = me->percent.
-
     me->percent = me->curr / me->count * 100.
 
-    CHECK lv_percent_old <> me->percent.
+    CHECK me->percent_old <> me->percent.
+
+    me->percent_old = me->percent.
 
     me->display( i_desc ).
 
