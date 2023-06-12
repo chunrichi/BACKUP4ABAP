@@ -1613,7 +1613,7 @@ FORM frm_get_msag .
     WHERE arbgb = @lt_t100u-arbgb
       AND msgnr = @lt_t100u-msgnr
     INTO TABLE @DATA(lt_t100).
-  SORT lt_t100 BY arbgb msgnr sprsl.
+  SORT lt_t100 BY arbgb sprsl msgnr.
 
   SELECT spras, laiso FROM t002 INTO TABLE @DATA(lt_t002).
   SORT lt_t002 BY spras.
