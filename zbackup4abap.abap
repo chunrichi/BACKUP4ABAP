@@ -14,7 +14,7 @@ REPORT zbackup4abap.
 *&----------------------------------------------------------------------
 *                     Tables
 *&----------------------------------------------------------------------
-TABLES: tadir.
+TABLES: tadir, sscrfields.
 
 *&----------------------------------------------------------------------
 *                     Types
@@ -220,6 +220,8 @@ SELECTION-SCREEN BEGIN OF BLOCK brun WITH FRAME.
   PARAMETERS: p_brun TYPE char30 NO-DISPLAY.
 SELECTION-SCREEN END OF BLOCK brun.
 
+SELECTION-SCREEN FUNCTION KEY 1.
+
 *&----------------------------------------------------------------------
 *                     Initialization
 *&----------------------------------------------------------------------
@@ -247,6 +249,10 @@ AT SELECTION-SCREEN OUTPUT.
 *                     Start-Of-Selection
 *&----------------------------------------------------------------------
 AT SELECTION-SCREEN.
+
+  IF sy-ucomm = 'FC01'.
+    PERFORM frm_display_timestamp.
+  ENDIF.
 
 
 *&----------------------------------------------------------------------
@@ -329,6 +335,11 @@ FORM frm_init_text .
   t_delt  = '增量获取(不跨client)'.
 
   t_dddl = '导出DDL文件, 用于 SAP NetWeaver AS for ABAP 7.52 SP00 以上版本 ADT'.
+
+  " 按钮
+  sscrfields-functxt_01 = VALUE smp_dyntxt(
+    quickinfo = '当前增量时戳'
+    text      = '增量信息' ).
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_check
@@ -728,6 +739,12 @@ FORM frm_get_report .
     REFRESH lt_source.
     CLEAR: lv_filename, lv_xstring.
   ENDLOOP.
+
+  " --> TODO: get screen
+  " 程序 LWBSCREENF50 子例程 dynpro_download
+  " 数据源 RS_SCREEN_IMPORT => `IMPORT DYNPRO h f e m ID dynp_id`
+  " 相关表 D020S DYNPSOURCE D020T DYNPLOAD DWWASYNC DWINACTIV D347T
+  " <--
 
   " map 文件
   PERFORM frm_add_map_file USING gv_parent_folder.
@@ -3449,5 +3466,28 @@ FORM frm_fix_package USING t_devclass TYPE tt_tdevc_parentcl.
     PERFORM frm_fix_package USING lt_tdev.
 
   ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_display_timestamp
+*&---------------------------------------------------------------------*
+*&  展示当前系统中增量时戳
+*&---------------------------------------------------------------------*
+FORM frm_display_timestamp .
+  DATA: lv_timestamp TYPE timestamp.
+
+  " 增量数据获取
+  gv_delta_store_id = gc_delta_store_id_fix_part && sy-uname.
+
+  " DeltaDownload && SY-UNAME
+  IMPORT gt_delt_log FROM DATABASE demo_indx_blob(zd) ID gv_delta_store_id.
+  SORT gt_delt_log BY object.
+
+  cl_demo_output=>write( gt_delt_log ).
+
+  GET TIME STAMP FIELD lv_timestamp.
+  cl_demo_output=>write( lv_timestamp ).
+
+  cl_demo_output=>display( ).
 
 ENDFORM.
