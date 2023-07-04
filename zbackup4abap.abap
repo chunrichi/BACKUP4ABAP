@@ -1137,12 +1137,12 @@ FORM frm_get_class .
     clsname,
     langu,
     descript,
-    msg_id,
+    "msg_id,
 
     exposure,
     state,
-    clsfinal,
-    r3release,
+    "clsfinal,
+    "r3release,
     changedby,
     changedon,
     CAST( '000000' AS TIMS ) AS changetm
@@ -1162,12 +1162,12 @@ FORM frm_get_class .
       clsname,
       langu,
       descript,
-      msg_id,
+      "msg_id,
 
       exposure,
       state,
-      clsfinal,
-      r3release,
+      "clsfinal,
+      "r3release,
       changedby,
       changedon
       FROM vseoclass
@@ -1179,6 +1179,27 @@ FORM frm_get_class .
     SORT lt_class BY clsname langu.
     DELETE ADJACENT DUPLICATES FROM lt_class COMPARING clsname.
   ENDIF.
+
+  SELECT
+    clsname,
+    langu,
+    descript,
+    "msg_id,
+
+    exposure,
+    state,
+    "clsfinal,
+    "r3release,
+    changedby,
+    changedon,
+    CAST( '000000' AS TIMS ) AS changetm
+    FROM vseoclif AS ss
+    INNER JOIN tadir AS ta ON ta~obj_name = ss~clsname AND ta~object = 'INTF'
+    WHERE ta~obj_name IN @gt_range_objname
+      AND version = '1' " 激活
+      AND state = '1'
+      AND ta~devclass IN @gt_range_devclass
+    APPENDING TABLE @lt_class.
 
   " --> 获取真实修改时间（类下的子节点）
   " 参考 LSEODF1X 948 行
@@ -1199,7 +1220,7 @@ FORM frm_get_class .
     LOOP AT lt_progdir ASSIGNING FIELD-SYMBOL(<ls_progdir>).
       " __ 当名称足够长时 无标识 `=` 正则无效
       " <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=+.*$` with = `` occ = -1 ).
-      <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=*(?:CCAU|CCDEF|CCIMP|CCMAC|CI|CM\d{3}|CO|CP|CS|CT|CU)$` with = `` occ = -1 ).
+      <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=*(?:CCAU|CCDEF|CCIMP|CCMAC|CI|CM\d{3}|CO|CP|CS|CT|CU|IP|IT|IU)$` with = `` occ = -1 ).
     ENDLOOP.
     SORT lt_progdir BY name udat DESCENDING utime DESCENDING.
   ENDIF.
