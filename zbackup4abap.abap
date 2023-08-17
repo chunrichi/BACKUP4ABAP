@@ -1222,7 +1222,7 @@ FORM frm_get_class .
   " 参考 LSEODF1X 948 行
   DATA: lt_range_name TYPE RANGE OF progdir-name.
   lt_range_name = VALUE #( FOR itm IN lt_class
-                            WHERE ( changedon IS INITIAL )
+                            " WHERE ( changedon IS INITIAL )
                               ( sign = 'I' option = 'CP' low = |{ itm-clsname }*| ) ).
   IF lt_range_name IS NOT INITIAL.
     SELECT
