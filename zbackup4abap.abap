@@ -2237,7 +2237,7 @@ CLASS lcl_pretty_json IMPLEMENTATION.
     "cloud
     DATA(json_xstring) = cl_abap_conv_codepage=>create_out( )->convert( json ).
     "on_premise
-    "DATA(json_xstring) = cl_abap_codepage=>convert_to( json_string_in ).
+    "DATA(json_xstring) = cl_abap_codepage=>convert_to( json ).
 
     "Check and pretty print JSON
 
