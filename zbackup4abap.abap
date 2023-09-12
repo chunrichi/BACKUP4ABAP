@@ -1664,7 +1664,7 @@ FORM frm_get_msag .
 
   DEFINE mc_process.
     " 文件名
-    READ TABLE lt_t002 INTO ls_t002 WITH KEY spras = ls_t100-sprsl BINARY SEARCH.
+    READ TABLE lt_t002 INTO ls_t002 WITH KEY spras = lv_spras_last BINARY SEARCH.
     IF sy-subrc = 0.
       lv_filename = ls_t002-laiso && '/' && ls_arbgb-arbgb && '.txt'.
     ELSE.
@@ -1732,6 +1732,7 @@ FORM frm_get_msag .
 
       " 多个语言 最后一个
       IF lv_spras_last <> lv_spras.
+        lv_spras_last = lv_spras.
         mc_process.
       ENDIF.
 
