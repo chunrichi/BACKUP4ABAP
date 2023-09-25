@@ -1192,9 +1192,6 @@ FORM frm_get_class .
         AND version = '1' " 激活
         AND ( state = '0' OR state = '1' )
       APPENDING TABLE @lt_class.
-    " 多语言去重
-    SORT lt_class BY clsname langu.
-    DELETE ADJACENT DUPLICATES FROM lt_class COMPARING clsname.
   ENDIF.
 
   SELECT
@@ -1217,6 +1214,10 @@ FORM frm_get_class .
       AND state = '1'
       AND ta~devclass IN @gt_range_devclass
     APPENDING TABLE @lt_class.
+
+  " 多语言去重
+  SORT lt_class BY clsname langu.
+  DELETE ADJACENT DUPLICATES FROM lt_class COMPARING clsname.
 
   " --> 获取真实修改时间（类下的子节点）
   " 参考 LSEODF1X 948 行
