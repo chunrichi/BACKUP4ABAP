@@ -394,7 +394,7 @@ FORM frm_init_variables .
 
     " 时间减3s
     LOOP AT gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>).
-      <ls_delt_log>-dtime -= 3.
+      <ls_delt_log>-dtime = <ls_delt_log>-dtime - 3.
     ENDLOOP.
   ENDIF.
 ENDFORM.
@@ -684,20 +684,20 @@ FORM frm_get_report .
       ELSE.
         lv_filename = COND #( WHEN lv_folder IS NOT INITIAL
                               THEN |{ lv_folder }/| ).
-        lv_filename &&= |INCLUDE/{ ls_list-progname }.{ gc_extension_name }|.
+        lv_filename = lv_filename && |INCLUDE/{ ls_list-progname }.{ gc_extension_name }|.
       ENDIF.
     ELSEIF ls_list-subc = '1'.
       lv_filename = COND #( WHEN lv_folder IS NOT INITIAL
                             THEN |{ lv_folder }/| ).
-      lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
+      lv_filename = lv_filename && |{ ls_list-progname }.{ gc_extension_name }|.
     ELSEIF ls_list-subc = 'M'.
       lv_filename = 'MODULEPOOLS/' && COND #( WHEN lv_folder IS NOT INITIAL
                                      THEN |{ lv_folder }/| ).
-      lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
+      lv_filename = lv_filename && |{ ls_list-progname }.{ gc_extension_name }|.
     ELSEIF ls_list-subc = 'T'.
       lv_filename = 'TYPEPOOLS/' && COND #( WHEN lv_folder IS NOT INITIAL
                                      THEN |{ lv_folder }/| ).
-      lv_filename &&= |{ ls_list-progname }.{ gc_extension_name }|.
+      lv_filename = lv_filename && |{ ls_list-progname }.{ gc_extension_name }|.
     ENDIF.
 
     " map 文件路径
@@ -1238,7 +1238,7 @@ FORM frm_get_class .
     LOOP AT lt_progdir ASSIGNING FIELD-SYMBOL(<ls_progdir>).
       " __ 当名称足够长时 无标识 `=` 正则无效
       " <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=+.*$` with = `` occ = -1 ).
-      <ls_progdir>-name = replace( val = <ls_progdir>-name pcre = `=*(?:CCAU|CCDEF|CCIMP|CCMAC|CI|CM\d{3}|CO|CP|CS|CT|CU|IP|IT|IU)$` with = `` occ = -1 ).
+      <ls_progdir>-name = replace( val = <ls_progdir>-name regex = `=*(?:CCAU|CCDEF|CCIMP|CCMAC|CI|CM\d{3}|CO|CP|CS|CT|CU|IP|IT|IU)$` with = `` occ = -1 ).
     ENDLOOP.
     SORT lt_progdir BY name udat DESCENDING utime DESCENDING.
   ENDIF.
@@ -2237,9 +2237,9 @@ CLASS lcl_pretty_json IMPLEMENTATION.
   METHOD pretty.
 
     "cloud
-    DATA(json_xstring) = cl_abap_conv_codepage=>create_out( )->convert( json ).
+    " DATA(json_xstring) = cl_abap_conv_codepage=>create_out( )->convert( json ).
     "on_premise
-    "DATA(json_xstring) = cl_abap_codepage=>convert_to( json ).
+    DATA(json_xstring) = cl_abap_codepage=>convert_to( json ).
 
     "Check and pretty print JSON
 
@@ -2252,9 +2252,9 @@ CLASS lcl_pretty_json IMPLEMENTATION.
     reader->skip_node( writer ).
 
     "cloud
-    DATA(json_formatted_string) = cl_abap_conv_codepage=>create_in( )->convert( CAST cl_sxml_string_writer( writer )->get_output( ) ).
+    " DATA(json_formatted_string) = cl_abap_conv_codepage=>create_in( )->convert( CAST cl_sxml_string_writer( writer )->get_output( ) ).
     "on premise
-    "DATA(json_formatted_string) = cl_abap_codepage=>convert_from( CAST cl_sxml_string_writer( writer )->get_output( ) ).
+    DATA(json_formatted_string) = cl_abap_codepage=>convert_from( CAST cl_sxml_string_writer( writer )->get_output( ) ).
 
     pretty_json = escape( val = json_formatted_string format = cl_abap_format=>e_xml_text  ).
 
