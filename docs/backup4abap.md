@@ -42,21 +42,21 @@
 
 选中需要的内容后，点击执行按钮，确认保存路径
 
-![](../src/RunReport%2020230131.png)
+![](./src/RunReport%2020230131.png)
 
 右键压缩文件，解压到当前文件夹
 
-![](../src/UnZip%2020230131.png)
+![](./src/UnZip%2020230131.png)
 
 即可拿到本次备份的内容
 
-![](../src/ShowDir%2020230131.png)
+![](./src/ShowDir%2020230131.png)
 
 ### 使用 git 进行备份程序
 
 新建文件 `.gitignore` 设置忽略文件内容，以下为常设置的内容(注意无后缀名)
 
-![](../src/Gitignore%2020230131.png)
+![](./src/Gitignore%2020230131.png)
 
 ```txt
 *.txt
@@ -67,7 +67,7 @@
 
 在当前路径右键打开命令行工具
 
-![](../src/OpenPowershell%2020230131.png)
+![](./src/OpenPowershell%2020230131.png)
 
 初始化 git 仓库
 
@@ -85,8 +85,8 @@ git commit -m '提交描述'
 
 后续再有处理时，按上序方法，再次执行，当有覆盖提示时，**选择覆盖** ，然后通过 `git` 再次提交
 
-![](../src/UnZipAgain%2020230131.png)
+![](./src/UnZipAgain%2020230131.png)
 
 然后可通过类似 `github desktop` 等程序看到每次提交的内容
 
-![](../src/GithubDesktop%2020230131.png)
+![](./src/GithubDesktop%2020230131.png)
