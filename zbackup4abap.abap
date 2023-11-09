@@ -723,7 +723,7 @@ CLASS lcl_backup4abap_folder IMPLEMENTATION.
     DATA: l_off TYPE i,
           l_len TYPE i.
 
-    IF name+4(2) = 'SI'.
+    IF strlen( name ) > 5 AND name+4(2) = 'SI'.
       rv_folder = 'IF/'.
       RETURN.
     ELSEIF name+1(2) = 'BP'.
@@ -923,7 +923,7 @@ CLASS lcl_backup4abap_object_fugr IMPLEMENTATION.
     " TLIBV  负责功能组（函数组 函数组负责人）
     " TADIR  资源对象库（不仅函数部分数据）（包 关联函数）
 
-    DATA: lt_func TYPE TABLE OF ty_function.
+    DATA: lt_func TYPE tt_function.
 
     DATA: lt_source TYPE TABLE OF text1000 WITH EMPTY KEY,
           lv_source TYPE string.
