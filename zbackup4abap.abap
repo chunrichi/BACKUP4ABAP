@@ -19,16 +19,20 @@ INTERFACE lif_backup4abap_object DEFERRED.
 CLASS lcl_backup4abap_filter_time DEFINITION DEFERRED.
 CLASS lcl_backup4abap_filter_package DEFINITION DEFERRED.
 CLASS lcl_backup4abap_screen_option DEFINITION DEFERRED.
+CLASS lcl_backup4abap_folder DEFINITION DEFERRED.
 
 CLASS lcl_backup4abap_objects DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_prog DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_fugr DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_clas DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_text DEFINITION DEFERRED.
+CLASS lcl_backup4abap_object_msag DEFINITION DEFERRED.
+
+CLASS lcl_backup4abap_object_ddls DEFINITION DEFERRED.
 
 CLASS lcl_backup4abap_export DEFINITION DEFERRED.
 
-" TOOL
+" TOOLS
 CLASS lcl_progress_bar DEFINITION DEFERRED.
 
 DEFINE _stop.
@@ -126,11 +130,14 @@ CLASS lcl_backup4abap_folder DEFINITION.
                                      RETURNING VALUE(rv_folder) TYPE string.
     CLASS-METHODS: split_folder_fugr IMPORTING name             TYPE string
                                      RETURNING VALUE(rv_folder) TYPE string.
+    CLASS-METHODS: split_folder_ddls IMPORTING name             TYPE string
+                                     RETURNING VALUE(rv_folder) TYPE string.
 ENDCLASS.
 CLASS lcl_backup4abap_objects DEFINITION.
   PUBLIC SECTION.
     CONSTANTS c_extension_abap TYPE string VALUE 'abap'.
     CONSTANTS c_extension_txt TYPE string VALUE 'txt'.
+    CONSTANTS c_extension_ddl TYPE string VALUE 'ddl'.
     CONSTANTS c_newline TYPE abap_cr_lf VALUE cl_abap_char_utilities=>cr_lf.
     CONSTANTS c_tab TYPE abap_char1 VALUE cl_abap_char_utilities=>horizontal_tab.
 
@@ -256,6 +263,47 @@ CLASS lcl_backup4abap_object_text DEFINITION INHERITING FROM lcl_backup4abap_obj
              progname TYPE string,
            END OF ty_split_limit.
 ENDCLASS.
+CLASS lcl_backup4abap_object_msag DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES lif_backup4abap_object.
+
+    ALIASES loadfiles FOR lif_backup4abap_object~loadfiles.
+    ALIASES load2zip FOR lif_backup4abap_object~load2zip.
+
+    TYPES: BEGIN OF ty_arbgb,
+             arbgb TYPE t100u-arbgb,
+             datum TYPE t100u-datum,
+           END OF ty_arbgb.
+
+    METHODS: constructor.
+
+  PROTECTED SECTION.
+    ALIASES split_folder FOR lif_backup4abap_object~split_folder.
+    ALIASES parent_folder FOR lif_backup4abap_object~parent_folder.
+    ALIASES files FOR lif_backup4abap_object~files.
+
+    TYPES: BEGIN OF ty_split_limit,
+             object   TYPE tadir-object,
+             progname TYPE string,
+           END OF ty_split_limit.
+ENDCLASS.
+CLASS lcl_backup4abap_object_ddls DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES lif_backup4abap_object.
+
+    ALIASES loadfiles FOR lif_backup4abap_object~loadfiles.
+    ALIASES load2zip FOR lif_backup4abap_object~load2zip.
+
+    METHODS: constructor.
+
+  PROTECTED SECTION.
+    ALIASES split_folder FOR lif_backup4abap_object~split_folder.
+    ALIASES parent_folder FOR lif_backup4abap_object~parent_folder.
+    ALIASES files FOR lif_backup4abap_object~files.
+
+    TYPES: ty_split_limit TYPE string.
+ENDCLASS.
+
 
 
 CLASS lcl_backup4abap_export DEFINITION.
@@ -357,8 +405,8 @@ SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
 
   " DDL
   SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_cdsv FOR FIELD p_cdsv.
-    PARAMETERS: p_cdsv AS CHECKBOX DEFAULT 'X'.
+    SELECTION-SCREEN COMMENT 5(23) t_ddls FOR FIELD p_ddls.
+    PARAMETERS: p_ddls AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " Domain
@@ -463,7 +511,7 @@ FORM frm_init_sets .
   t_fugr = '函数程序'.
   t_tabl = '表内容'.
   t_clas = '类程序'.
-  t_cdsv = 'CDS视图'.
+  t_ddls = 'CDS视图'.
   t_doma = '数据域'.
   t_dtel = '数据元素'.
   t_ttyp = '表类型'.
@@ -598,7 +646,8 @@ CLASS lcl_backup4abap_folder IMPLEMENTATION.
                       ( tag = 'SD' ) ( tag = 'FI' ) ( tag = 'FICO' folder = 'FI' )
                       ( tag = 'HR' )
                       ( tag = 'CO' )
-                      ( tag = 'RAF' ) " RAF 框架
+                      ( tag = 'RAF' )  " RAF 框架
+                      ( tag = 'AKIT' ) " AKIT 工具集
                       ( tag = 'TEST' )
                       ( tag = 'DEMO' )
                       ( tag = 'ABAP' )
@@ -700,6 +749,10 @@ CLASS lcl_backup4abap_folder IMPLEMENTATION.
       REPLACE REGEX `[(:?CL)|(:?CO)|(:?CX)|(:?IF)]$` IN rv_folder WITH ``.
     ENDIF.
 
+    IF rv_folder IS NOT INITIAL.
+      rv_folder = rv_folder && '/'.
+    ENDIF.
+
   ENDMETHOD.
   METHOD split_folder_fugr.
     DATA: lv_filename TYPE string,
@@ -724,6 +777,21 @@ CLASS lcl_backup4abap_folder IMPLEMENTATION.
                           THEN ls_folder-tag
                           ELSE ls_folder-folder ) && '/'.
     ENDIF.
+  ENDMETHOD.
+
+  METHOD split_folder_ddls.
+    " 1. 清除 `^ZV`
+    " 2. 清除 `_.*$`
+
+    rv_folder = name.
+
+    REPLACE REGEX `^[YZ]V|^[YZ]` IN rv_folder WITH ''.
+    REPLACE REGEX `_.*$` IN rv_folder WITH ''.
+
+    IF rv_folder IS NOT INITIAL.
+      rv_folder = rv_folder && '/'.
+    ENDIF.
+
   ENDMETHOD.
 ENDCLASS.
 
@@ -1333,7 +1401,7 @@ CLASS lcl_backup4abap_object_text IMPLEMENTATION.
     SORT lt_t002 BY spras.
 
     me->o_pb->count = lines( lt_repot ).
-    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'CLAS' ).
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'TEXT' ).
 
     LOOP AT lt_repot INTO DATA(ls_repot).
       me->o_pb->add( i_desc = ls_repot-progname ).
@@ -1419,6 +1487,244 @@ CLASS lcl_backup4abap_object_text IMPLEMENTATION.
                    && lcl_backup4abap_folder=>split_folder_prog( name = lv_filename subc = '1' ).
     ENDCASE.
 
+  ENDMETHOD.
+
+  METHOD load2zip.
+
+    CHECK io_zip IS BOUND.
+
+    LOOP AT me->files INTO DATA(file).
+      io_zip->add( name    = file-name
+                   content = file-data ).
+    ENDLOOP.
+
+  ENDMETHOD.
+ENDCLASS.
+CLASS lcl_backup4abap_object_msag IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( ).
+
+    me->o_pb = NEW #( `Process MSAG & ` ).
+    me->parent_folder = 'SE91' && '/'.
+  ENDMETHOD.
+
+  METHOD loadfiles.
+
+    " T100 T100U
+
+    DATA: lt_arbgb TYPE TABLE OF ty_arbgb.
+    DATA: lv_spras      TYPE t002-spras,
+          lv_spras_last TYPE t002-spras,
+          lv_string     TYPE string.
+    FIELD-SYMBOLS: <ls_file> LIKE LINE OF me->files.
+
+    SELECT
+      tu~arbgb,
+      tu~msgnr,
+      tu~name,
+      tu~datum,
+      tu~selfdef
+      FROM tadir AS ta
+      LEFT JOIN t100u AS tu ON tu~arbgb = ta~obj_name
+      WHERE ta~pgmid = 'R3TR'
+        AND ta~object = 'MSAG'
+        AND ta~obj_name IN @s_objnam
+        AND ta~devclass IN @s_pack
+      INTO TABLE @DATA(lt_t100u).
+    SORT lt_t100u BY arbgb msgnr.
+
+    CHECK lt_t100u IS NOT INITIAL.
+
+    me->o_pb->count = lines( lt_t100u ).
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'MSAG' ).
+
+    MOVE-CORRESPONDING lt_t100u TO lt_arbgb.
+    SORT lt_arbgb BY arbgb datum DESCENDING.
+    DELETE ADJACENT DUPLICATES FROM lt_arbgb COMPARING arbgb.
+
+    IF is_delta( ) = 'X'.
+      DELETE lt_arbgb WHERE datum < ls_delt_log-ddate.
+    ENDIF.
+
+    SELECT
+      arbgb,
+      msgnr,
+      sprsl,
+      text
+      FROM t100
+      FOR ALL ENTRIES IN @lt_t100u
+      WHERE arbgb = @lt_t100u-arbgb
+        AND msgnr = @lt_t100u-msgnr
+      INTO TABLE @DATA(lt_t100).
+    SORT lt_t100 BY arbgb sprsl msgnr.
+
+    SELECT spras, laiso FROM t002 INTO TABLE @DATA(lt_t002).
+    SORT lt_t002 BY spras.
+    DATA: ls_t002 LIKE LINE OF lt_t002.
+
+    DEFINE mc_process.
+      APPEND INITIAL LINE TO me->files ASSIGNING <ls_file>.
+
+      " 文件名
+      READ TABLE lt_t002 INTO ls_t002 WITH KEY spras = lv_spras_last BINARY SEARCH.
+      IF sy-subrc = 0.
+        <ls_file>-name = ls_t002-laiso && '/' && ls_arbgb-arbgb && '.' && c_extension_txt.
+      ELSE.
+        <ls_file>-name = ls_arbgb-arbgb && '.' && c_extension_txt.
+      ENDIF.
+
+      <ls_file>-name = me->parent_folder && <ls_file>-name.
+
+      " 内容标题
+      CONCATENATE 'KEY' c_tab 'CHANGER_____' c_tab 'CDATUM__' c_tab 'T' c_tab 'TEXT' c_newline lv_string INTO lv_string.
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = lv_string
+                               IMPORTING buffer = <ls_file>-data ).
+
+      CLEAR: lv_string.
+    END-OF-DEFINITION.
+
+    LOOP AT lt_arbgb INTO DATA(ls_arbgb).
+      me->o_pb->add( i_desc = ls_arbgb-arbgb ).
+
+      READ TABLE lt_t100 TRANSPORTING NO FIELDS WITH KEY arbgb = ls_arbgb-arbgb BINARY SEARCH.
+      IF sy-subrc = 0.
+        LOOP AT lt_t100 INTO DATA(ls_t100) FROM sy-tabix.
+          IF ls_t100-arbgb <> ls_arbgb-arbgb.
+            EXIT.
+          ENDIF.
+
+          IF lv_spras IS INITIAL.
+            lv_spras = ls_t100-sprsl.
+          ENDIF.
+
+          " 多个语言
+          IF lv_spras IS NOT INITIAL AND lv_spras <> ls_t100-sprsl.
+            lv_spras_last = lv_spras.
+            lv_spras = ls_t100-sprsl.
+
+            mc_process.
+          ENDIF.
+
+          " 消息编号
+          lv_string = lv_string && ls_t100-msgnr && c_tab.
+
+          READ TABLE lt_t100u INTO DATA(ls_t100u) WITH KEY arbgb = ls_t100-arbgb msgnr = ls_t100-msgnr BINARY SEARCH.
+          " 修改人
+          lv_string = lv_string && |{ ls_t100u-name WIDTH = 12 }| && c_tab.
+          " 修改时间
+          lv_string = lv_string && ls_t100u-datum && c_tab.
+          " 类型
+          lv_string = lv_string && ls_t100u-selfdef && c_tab.
+          " 内容
+          lv_string = lv_string && ls_t100-text && c_newline.
+          CLEAR ls_t100u.
+        ENDLOOP.
+
+        " 多个语言 最后一个
+        IF lv_spras_last <> lv_spras.
+          lv_spras_last = lv_spras.
+          mc_process.
+        ENDIF.
+
+      ENDIF.
+
+      CLEAR: lv_spras, lv_spras_last.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD split_folder.
+    " pass
+  ENDMETHOD.
+
+  METHOD load2zip.
+
+    CHECK io_zip IS BOUND.
+
+    LOOP AT me->files INTO DATA(file).
+      io_zip->add( name    = file-name
+                   content = file-data ).
+    ENDLOOP.
+
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS lcl_backup4abap_object_ddls IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( ).
+
+    me->o_pb = NEW #( `Process DDLS & ` ).
+    me->parent_folder = 'DDL' && '/'.
+  ENDMETHOD.
+
+  METHOD loadfiles.
+
+    " 读取 DDL
+    SELECT
+      rc~ddlname,
+      rc~as4user,
+      rc~as4date,
+      rc~as4time,
+      rc~source,
+      ct~ddtext
+      FROM ddddlsrc AS rc
+      INNER JOIN tadir AS ta ON ta~obj_name = rc~ddlname AND object = 'DDLS' " 存在 STOB 结构化对象
+      LEFT JOIN ddddlsrct AS ct ON ct~ddlname    = rc~ddlname
+                               AND ct~ddlanguage = '1'
+                               AND ct~as4local   = rc~as4local
+      WHERE ta~obj_name IN @s_objnam "rc~ddlname
+        AND rc~as4local = 'A'
+        AND ta~devclass IN @s_pack
+      INTO TABLE @DATA(lt_ddlsrc).
+    SORT lt_ddlsrc BY ddlname.
+
+    CHECK lt_ddlsrc IS NOT INITIAL.
+
+    me->o_pb->count = lines( lt_ddlsrc ).
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'DDLS' ).
+
+    LOOP AT lt_ddlsrc INTO DATA(ls_ddl).
+      me->o_pb->add( i_desc = ls_ddl-ddlname ).
+      " 文件夹匹配 -> 文件名
+
+      " 检查增量
+      IF is_delta( ) = 'X'.
+        IF ls_delt_log-ddate > ls_ddl-as4date
+          OR ( ls_delt_log-ddate = ls_ddl-as4date AND ls_delt_log-dtime > ls_ddl-as4time ).
+
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      APPEND INITIAL LINE TO me->files ASSIGNING FIELD-SYMBOL(<ls_file>).
+
+      <ls_file>-name = split_folder( ls_ddl-ddlname )
+                    && ls_ddl-ddlname && '.' && c_extension_ddl.
+
+      <ls_file>-name = me->parent_folder && <ls_file>-name.
+
+      " --> Begin 清除末尾注释
+      REPLACE FIRST OCCURRENCE OF REGEX `\/\*\+\[internal\].*\*\/` IN ls_ddl-source WITH ``.
+      " <--
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = ls_ddl-source
+                               IMPORTING buffer = <ls_file>-data ).
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD split_folder.
+    DATA: l_limit TYPE ty_split_limit.
+
+    l_limit = i_limit.
+
+    rv_filename = lcl_backup4abap_folder=>split_folder_ddls( l_limit ).
   ENDMETHOD.
 
   METHOD load2zip.
