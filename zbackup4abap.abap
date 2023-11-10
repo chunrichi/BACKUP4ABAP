@@ -1222,6 +1222,7 @@ CLASS lcl_backup4abap_object_clas IMPLEMENTATION.
         <ls_progdir>-name = replace( val = <ls_progdir>-name regex = `=*(?:CCAU|CCDEF|CCIMP|CCMAC|CI|CM\d{3}|CO|CP|CS|CT|CU|IP|IT|IU)$` with = `` occ = -1 ).
       ENDLOOP.
       SORT lt_progdir BY name udat DESCENDING utime DESCENDING.
+      DELETE ADJACENT DUPLICATES FROM lt_progdir COMPARING name.
     ENDIF.
     " <--
 
@@ -1297,8 +1298,11 @@ CLASS lcl_backup4abap_object_clas IMPLEMENTATION.
 
           APPEND INITIAL LINE TO me->files ASSIGNING <ls_file>.
 
-          <ls_file>-name = split_folder( ls_class-clsname )
-                        && 'More/' && ls_class-clsname && |-{ ls_type-type }.| && c_extension_abap.
+          <ls_file>-name = 'More/'
+                        && split_folder( ls_class-clsname )
+                        && ls_class-clsname && |-{ ls_type-type }.| && c_extension_abap.
+
+          <ls_file>-name = me->parent_folder && <ls_file>-name.
 
           " 内表转换为长字符串
           CONCATENATE LINES OF lt_source INTO lv_source SEPARATED BY c_newline.
@@ -1421,7 +1425,7 @@ CLASS lcl_backup4abap_object_text IMPLEMENTATION.
 
       <ls_file>-name = split_folder( VALUE ty_split_limit( object   = ls_tadir-object
                                                            progname = ls_repot-progname ) )
-                    && ls_repot-progname && '.' && c_extension_txt.
+                    && '.' && c_extension_txt.
 
       CLEAR ls_tadir.
 
@@ -1432,7 +1436,6 @@ CLASS lcl_backup4abap_object_text IMPLEMENTATION.
       ELSE.
         <ls_file>-name = me->parent_folder && <ls_file>-name.
       ENDIF.
-
 
       READ TEXTPOOL ls_repot-progname LANGUAGE ls_repot-language STATE 'A' INTO lt_textpool.
       IF sy-subrc = 0.
@@ -1468,23 +1471,24 @@ CLASS lcl_backup4abap_object_text IMPLEMENTATION.
     CASE ls_limit-object.
       WHEN ''.
         " pass
+        rv_filename = ls_limit-progname.
       WHEN 'CLAS'.
         lv_filename = ls_limit-progname.
         REPLACE REGEX '=*CP$' IN lv_filename WITH ''.
 
         rv_filename = 'SE24/'
-                   && lcl_backup4abap_folder=>split_folder_clas( name = lv_filename ).
+                   && lcl_backup4abap_folder=>split_folder_clas( name = lv_filename ) && lv_filename.
       WHEN 'FUGR'.
         lv_filename = ls_limit-progname.
         REPLACE REGEX '^SAPL' IN lv_filename WITH ''.
 
         rv_filename = 'SE37/'
-                   && lcl_backup4abap_folder=>split_folder_fugr( name = lv_filename ).
+                   && lcl_backup4abap_folder=>split_folder_fugr( name = lv_filename ) && lv_filename.
       WHEN OTHERS.
         lv_filename = ls_limit-progname.
 
         rv_filename = 'SE38/'
-                   && lcl_backup4abap_folder=>split_folder_prog( name = lv_filename subc = '1' ).
+                   && lcl_backup4abap_folder=>split_folder_prog( name = lv_filename subc = '1' ) && lv_filename.
     ENDCASE.
 
   ENDMETHOD.
