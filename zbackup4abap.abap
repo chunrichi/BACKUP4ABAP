@@ -27,13 +27,17 @@ CLASS lcl_backup4abap_object_fugr DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_clas DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_text DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_msag DEFINITION DEFERRED.
-
+CLASS lcl_backup4abap_object_tabl DEFINITION DEFERRED.
+CLASS lcl_backup4abap_object_doma DEFINITION DEFERRED.
+CLASS lcl_backup4abap_object_dtel DEFINITION DEFERRED.
+CLASS lcl_backup4abap_object_ttyp DEFINITION DEFERRED.
 CLASS lcl_backup4abap_object_ddls DEFINITION DEFERRED.
 
 CLASS lcl_backup4abap_export DEFINITION DEFERRED.
 
 " TOOLS
 CLASS lcl_progress_bar DEFINITION DEFERRED.
+CLASS lcl_pretty_json DEFINITION DEFERRED.
 
 DEFINE _stop.
   IF sy-subrc <> 0.
@@ -99,7 +103,7 @@ CLASS lcl_backup4abap_filter_time DEFINITION.
                 RETURNING VALUE(rs_delt_log) TYPE ty_delt_log.
   PROTECTED SECTION.
     CLASS-DATA objt TYPE REF TO lcl_backup4abap_filter_time.
-    CONSTANTS c_delta_store_id_fix_part TYPE char18 VALUE 'DeltaDownload'.
+    CONSTANTS c_delta_store_id_fix_part TYPE char18 VALUE 'DeltaDown'.
 ENDCLASS.
 CLASS lcl_backup4abap_screen_option DEFINITION.
   PUBLIC SECTION.
@@ -138,6 +142,7 @@ CLASS lcl_backup4abap_objects DEFINITION.
     CONSTANTS c_extension_abap TYPE string VALUE 'abap'.
     CONSTANTS c_extension_txt TYPE string VALUE 'txt'.
     CONSTANTS c_extension_ddl TYPE string VALUE 'ddl'.
+    CONSTANTS c_extension_json TYPE string VALUE 'json'.
     CONSTANTS c_newline TYPE abap_cr_lf VALUE cl_abap_char_utilities=>cr_lf.
     CONSTANTS c_tab TYPE abap_char1 VALUE cl_abap_char_utilities=>horizontal_tab.
 
@@ -287,6 +292,227 @@ CLASS lcl_backup4abap_object_msag DEFINITION INHERITING FROM lcl_backup4abap_obj
              progname TYPE string,
            END OF ty_split_limit.
 ENDCLASS.
+CLASS lcl_backup4abap_object_tabl DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES lif_backup4abap_object.
+
+    ALIASES loadfiles FOR lif_backup4abap_object~loadfiles.
+    ALIASES load2zip FOR lif_backup4abap_object~load2zip.
+
+    TYPES: BEGIN OF ty_dd02l,
+             tabname   TYPE dd02l-tabname,
+             contflag  TYPE dd02l-contflag,
+             authclass TYPE dd02l-authclass,
+             mainflag  TYPE dd02l-mainflag,
+             exclass   TYPE dd02l-exclass,
+             as4date   TYPE dd02l-as4date,
+             as4time   TYPE dd02l-as4time,
+           END OF ty_dd02l,
+           BEGIN OF ty_dd02t,
+             tabname    TYPE dd02t-tabname,
+             ddlanguage TYPE dd02t-ddlanguage,
+             ddtext     TYPE dd02t-ddtext,
+           END OF ty_dd02t,
+           BEGIN OF ty_dd03t,
+             tabname    TYPE dd03t-tabname,
+             fieldname  TYPE dd03t-fieldname,
+             ddlanguage TYPE dd03t-ddlanguage,
+             ddtext     TYPE dd03t-ddtext,
+           END OF ty_dd03t.
+    TYPES: BEGIN OF ty_dd05q,
+             tabname    TYPE dd05q-tabname,
+             fieldname  TYPE dd05q-fieldname,
+             primpos    TYPE dd05q-primpos,
+             fortable   TYPE dd05q-fortable,
+             forkey     TYPE dd05q-forkey,
+             checktable TYPE dd05q-checktable,
+             checkfield TYPE dd05q-checkfield,
+           END OF ty_dd05q,
+           BEGIN OF ty_dd08l,
+             tabname    TYPE dd08l-tabname,
+             fieldname  TYPE dd08l-fieldname,
+             checktable TYPE dd08l-checktable,
+             frkart     TYPE dd08l-frkart,
+             cardleft   TYPE dd08l-cardleft,
+             card       TYPE dd08l-card,
+             ddlanguage TYPE dd08t-ddlanguage,
+             ddtext     TYPE dd08t-ddtext,
+           END OF ty_dd08l.
+    DATA: tdd02l TYPE TABLE OF ty_dd02l,
+          tdd02t TYPE TABLE OF ty_dd02t,
+          tdd03l TYPE TABLE OF dd03l,
+          tdd03t TYPE TABLE OF ty_dd03t.
+    DATA: tdd05q TYPE TABLE OF ty_dd05q,
+          tdd08l TYPE TABLE OF ty_dd08l.
+
+    DATA: ddldicts TYPE TABLE OF text1000.
+
+    METHODS: constructor.
+
+    METHODS: get_base IMPORTING iv_tabcls TYPE tabclass.
+    METHODS: get_transp_more.
+
+
+    METHODS: fill_table.
+    METHODS: fill_struct.
+
+  PROTECTED SECTION.
+    ALIASES split_folder FOR lif_backup4abap_object~split_folder.
+    ALIASES parent_folder FOR lif_backup4abap_object~parent_folder.
+    ALIASES files FOR lif_backup4abap_object~files.
+
+    TYPES: ty_split_limit TYPE string.
+
+    TYPES: BEGIN OF ty_foreignkey_eq,
+             fortable   TYPE fortable,
+             forkey     TYPE forkey,
+             checkfield TYPE fieldname,
+           END OF ty_foreignkey_eq.
+    TYPES: tty_foreignkey_eq TYPE TABLE OF ty_foreignkey_eq WITH EMPTY KEY.
+    TYPES: BEGIN OF ty_foreignkey,
+             label         TYPE string,
+             screencheck   TYPE text6,
+             keytype       TYPE frkart,
+             cardleft      TYPE cardleft,
+             card          TYPE card,
+             checktable    TYPE string,
+             foreignkey_eq TYPE tty_foreignkey_eq,
+           END OF ty_foreignkey.
+    TYPES: BEGIN OF ty_field,
+             name       TYPE string,
+             key        TYPE char1,
+             nonull     TYPE char1,
+             type       TYPE string,
+             addtion    TYPE string, " 补充
+             adddesc    TYPE string,
+             foreignkey TYPE ty_foreignkey,
+           END OF ty_field.
+    TYPES: tt_fields TYPE TABLE OF ty_field WITH EMPTY KEY.
+
+    DATA: field_max TYPE i.
+    METHODS: preproc_fields IMPORTING tabname         TYPE tabname
+                            RETURNING VALUE(r_fields) TYPE tt_fields.
+
+    METHODS: field_type IMPORTING iv_datatype    TYPE dd03l-datatype
+                                  iv_leng        TYPE dd03l-leng
+                                  iv_decimals    TYPE dd03l-decimals
+                        RETURNING VALUE(rv_type) TYPE string.
+
+    METHODS:
+      set_label IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_encat IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_tabty IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_edits IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_deliv IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_actty IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_repla IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string,
+      set_define IMPORTING str TYPE data RETURNING VALUE(rv_str) TYPE string.
+
+ENDCLASS.
+CLASS lcl_backup4abap_object_doma DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES lif_backup4abap_object.
+
+    ALIASES loadfiles FOR lif_backup4abap_object~loadfiles.
+    ALIASES load2zip FOR lif_backup4abap_object~load2zip.
+
+    METHODS: constructor.
+
+  PROTECTED SECTION.
+    ALIASES split_folder FOR lif_backup4abap_object~split_folder.
+    ALIASES parent_folder FOR lif_backup4abap_object~parent_folder.
+    ALIASES files FOR lif_backup4abap_object~files.
+
+    TYPES: ty_split_limit TYPE string.
+
+    TYPES: BEGIN OF ty_domavalues,
+             valpos     TYPE i,
+             ddtext     TYPE string,
+             domvalue_l TYPE string,
+             domvalue_h TYPE string,
+             appval     TYPE abap_bool, " 附加
+           END OF ty_domavalues.
+    TYPES: BEGIN OF ty_doma,
+             domname TYPE dd01l-domname,
+             as4user TYPE dd01l-as4user,
+             as4date TYPE dd01l-as4date,
+             as4time TYPE dd01l-as4time,
+             values  TYPE TABLE OF ty_domavalues WITH DEFAULT KEY,
+           END OF ty_doma.
+ENDCLASS.
+CLASS lcl_backup4abap_object_dtel DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES lif_backup4abap_object.
+
+    ALIASES loadfiles FOR lif_backup4abap_object~loadfiles.
+    ALIASES load2zip FOR lif_backup4abap_object~load2zip.
+
+    METHODS: constructor.
+
+  PROTECTED SECTION.
+    ALIASES split_folder FOR lif_backup4abap_object~split_folder.
+    ALIASES parent_folder FOR lif_backup4abap_object~parent_folder.
+    ALIASES files FOR lif_backup4abap_object~files.
+
+    TYPES: ty_split_limit TYPE string.
+
+    TYPES: BEGIN OF ty_elem,
+             rollname  TYPE dd04l-rollname,
+             domname   TYPE dd04l-domname,
+             as4user   TYPE dd04l-as4user,
+             as4date   TYPE dd04l-as4date,
+             as4time   TYPE dd04l-as4time,
+             datatype  TYPE dd04l-datatype,
+             leng      TYPE dd04l-leng,
+             decimals  TYPE dd04l-decimals,
+             outputlen TYPE dd04l-outputlen,
+             lowercase TYPE dd04l-lowercase,
+             convexit  TYPE dd04l-convexit,
+             entitytab TYPE dd04l-entitytab,
+             refkind   TYPE dd04l-refkind,
+             ddtext    TYPE dd04t-ddtext,
+             reptext   TYPE dd04t-reptext,
+             scrtext_s TYPE dd04t-scrtext_s,
+             scrtext_m TYPE dd04t-scrtext_m,
+             scrtext_l TYPE dd04t-scrtext_l,
+           END OF ty_elem.
+ENDCLASS.
+CLASS lcl_backup4abap_object_ttyp DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES lif_backup4abap_object.
+
+    ALIASES loadfiles FOR lif_backup4abap_object~loadfiles.
+    ALIASES load2zip FOR lif_backup4abap_object~load2zip.
+
+    METHODS: constructor.
+
+  PROTECTED SECTION.
+    ALIASES split_folder FOR lif_backup4abap_object~split_folder.
+    ALIASES parent_folder FOR lif_backup4abap_object~parent_folder.
+    ALIASES files FOR lif_backup4abap_object~files.
+
+    TYPES: ty_split_limit TYPE string.
+
+    TYPES: BEGIN OF ty_ttyp,
+             typename   TYPE dd40l-typename,
+             rowtype    TYPE dd40l-rowtype,
+             rowkind    TYPE dd40l-rowkind,
+             datatype   TYPE dd40l-datatype,
+             leng       TYPE dd40l-leng,
+             decimals   TYPE dd40l-decimals,
+             accessmode TYPE dd40l-accessmode,
+             keydef     TYPE dd40l-keydef,
+             keykind    TYPE dd40l-keykind,
+             keyfdcount TYPE dd40l-keyfdcount,
+             generic    TYPE dd40l-generic,
+             typelen    TYPE dd40l-typelen,
+             as4user    TYPE dd40l-as4user,
+             as4date    TYPE dd40l-as4date,
+             as4time    TYPE dd40l-as4time,
+             ddtext     TYPE dd40t-ddtext,
+           END OF ty_ttyp.
+ENDCLASS.
+
 CLASS lcl_backup4abap_object_ddls DEFINITION INHERITING FROM lcl_backup4abap_objects CREATE PUBLIC.
   PUBLIC SECTION.
     INTERFACES lif_backup4abap_object.
@@ -340,6 +566,13 @@ CLASS lcl_progress_bar DEFINITION.
     DATA: percent     TYPE p DECIMALS 0 LENGTH 5,
           percent_old TYPE p DECIMALS 0 LENGTH 5.
     METHODS display IMPORTING desc TYPE data.
+ENDCLASS.
+
+CLASS lcl_pretty_json DEFINITION.
+  PUBLIC SECTION.
+
+    CLASS-METHODS: pretty IMPORTING json               TYPE string
+                          RETURNING VALUE(pretty_json) TYPE string.
 ENDCLASS.
 
 *&----------------------------------------------------------------------
@@ -1655,6 +1888,953 @@ CLASS lcl_backup4abap_object_msag IMPLEMENTATION.
 
   ENDMETHOD.
 ENDCLASS.
+CLASS lcl_backup4abap_object_tabl IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( ).
+
+    me->o_pb = NEW #( `Process TABL & `).
+    me->parent_folder = 'SE11' && '/'.
+  ENDMETHOD.
+
+  METHOD get_base.
+
+    " 查询基础数据
+    SELECT
+      dd~tabname,
+      dd~contflag,
+      dd~authclass,
+      dd~mainflag,
+      dd~exclass,
+      dd~as4date,
+      dd~as4time
+      FROM dd02l AS dd
+      INNER JOIN tadir AS ta ON dd~tabname = ta~obj_name
+      WHERE ta~obj_name IN @s_objnam
+        AND dd~tabclass = @iv_tabcls
+        AND dd~as4local = 'A'
+        AND ta~pgmid = 'R3TR'
+        AND ta~object = 'TABL'
+        AND ta~devclass IN @s_pack
+      INTO TABLE @me->tdd02l.
+
+    CHECK me->tdd02l IS NOT INITIAL.
+
+    SELECT
+      tabname,
+      ddlanguage,
+      ddtext
+      FROM dd02t
+      FOR ALL ENTRIES IN @me->tdd02l
+      WHERE tabname = @me->tdd02l-tabname
+        AND ddlanguage IN ('1','E')
+      INTO TABLE @me->tdd02t.
+    SORT me->tdd02t BY tabname ddlanguage.
+    DELETE ADJACENT DUPLICATES FROM me->tdd02t COMPARING tabname.
+
+    " 字段 与 字段描述
+    SELECT
+      *
+      FROM dd03l AS 3l
+      FOR ALL ENTRIES IN @me->tdd02l
+      WHERE tabname  = @me->tdd02l-tabname
+        AND adminfield = '0' " 仅处理第一级别的字段/结构 => 在函数里有效 直接查表需要下方的逻辑
+        AND depth = '00'     " adminfield 针对结构有效 depth 针对结构套结构有效
+        AND as4local   = 'A'
+      INTO TABLE @me->tdd03l.
+    SORT me->tdd03l BY tabname position.
+
+    SELECT
+      tabname,
+      fieldname,
+      ddlanguage,
+      ddtext
+      FROM dd03t AS 3t
+      FOR ALL ENTRIES IN @me->tdd02l
+      WHERE tabname = @me->tdd02l-tabname
+        AND as4local = 'A'
+        AND ddlanguage IN ('1','E')
+      INTO TABLE @me->tdd03t.
+    SORT me->tdd03t BY tabname fieldname ddlanguage.
+    DELETE ADJACENT DUPLICATES FROM me->tdd03t COMPARING tabname fieldname.
+
+  ENDMETHOD.
+
+  METHOD get_transp_more.
+
+    CHECK me->tdd02l IS NOT INITIAL.
+
+    " --> TRANSP 外键逻辑
+    SELECT
+      tabname,
+      fieldname,
+      primpos,
+      fortable,
+      forkey,
+      checktable,
+      checkfield
+      FROM dd05q
+      FOR ALL ENTRIES IN @me->tdd02l
+      WHERE tabname = @me->tdd02l-tabname
+      INTO TABLE @me->tdd05q.
+    SORT me->tdd05q BY tabname fieldname primpos.
+
+    SELECT
+      8l~tabname,
+      8l~fieldname,
+      8l~checktable,
+      8l~frkart,
+      8l~cardleft,
+      8l~card,
+      8t~ddlanguage,
+      8t~ddtext
+      FROM dd08l AS 8l
+      LEFT JOIN dd08t AS 8t ON 8t~tabname = 8l~tabname
+                           AND 8t~fieldname = 8l~fieldname
+                           AND 8t~as4local = 8l~as4local
+                           AND 8t~as4vers = 8l~as4vers
+                           AND 8t~ddlanguage IN ('1','E')
+      FOR ALL ENTRIES IN @me->tdd02l
+      WHERE 8l~tabname = @me->tdd02l-tabname
+      INTO TABLE @me->tdd08l.
+    SORT me->tdd08l BY tabname fieldname ddlanguage.
+    DELETE ADJACENT DUPLICATES FROM me->tdd08l COMPARING tabname fieldname.
+
+    " <--
+
+  ENDMETHOD.
+
+  METHOD fill_table.
+    DATA: lv_string   TYPE string,
+          lv_source   TYPE string,
+          lt_ddldicts TYPE TABLE OF text1000.
+
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'TABT' ). " 特殊增量 TABL
+
+    me->o_pb->base_desc = `Process TABL Table & `.
+    me->o_pb->count = lines( me->tdd02l ).
+
+    LOOP AT me->tdd02l INTO DATA(ls_dd02l).
+      me->o_pb->add( i_desc = ls_dd02l-tabname ).
+
+      IF is_delta( ) = 'X'.
+        IF ls_delt_log-ddate > ls_dd02l-as4date
+          OR ( ls_delt_log-ddate = ls_dd02l-as4date AND ls_delt_log-dtime > ls_dd02l-as4time ).
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      APPEND INITIAL LINE TO me->files ASSIGNING FIELD-SYMBOL(<ls_file>).
+
+      <ls_file>-name = split_folder( ls_dd02l-tabname )
+                    && ls_dd02l-tabname && '.' && c_extension_ddl.
+
+      <ls_file>-name = me->parent_folder && 'Table/' && <ls_file>-name.
+
+      " 表描述
+      READ TABLE me->tdd02t INTO DATA(ls_dd02t) WITH KEY tabname = ls_dd02l-tabname BINARY SEARCH.
+
+      APPEND set_label( ls_dd02t-ddtext   ) TO lt_ddldicts. " 描述
+      APPEND set_encat( ls_dd02l-exclass  ) TO lt_ddldicts. " 增强类别
+      APPEND set_encat( ''                ) TO lt_ddldicts. " 表类别
+      APPEND set_encat( ls_dd02l-contflag ) TO lt_ddldicts. " 交付类\提交类
+      APPEND set_encat( ls_dd02l-mainflag ) TO lt_ddldicts. " 维护方式\表维护
+      APPEND set_actty( ls_dd02l-authclass ) TO lt_ddldicts. " 激活类型
+      APPEND set_define( |{ ls_dd02l-tabname CASE = LOWER }| ) TO lt_ddldicts. " 表名
+
+      DATA(fields) = preproc_fields( ls_dd02l-tabname ).
+
+      LOOP AT fields INTO DATA(field).
+        IF field-foreignkey-label IS NOT INITIAL.
+          APPEND |  @AbapCatalog.foreignKey.label : '{ field-foreignkey-label }'| TO lt_ddldicts.
+        ENDIF.
+
+        CASE field-foreignkey-keytype.
+          WHEN 'KEY'.
+            APPEND |  @AbapCatalog.foreignKey.keyType : #{ 'KEY' }| TO lt_ddldicts.
+          WHEN 'REF'.
+            APPEND |  @AbapCatalog.foreignKey.keyType : #{ 'NON_KEY' }| TO lt_ddldicts.
+          WHEN 'TEXT'.
+            APPEND |  @AbapCatalog.foreignKey.keyType : #{ 'TEXT_KEY' }| TO lt_ddldicts.
+          WHEN OTHERS.
+        ENDCASE.
+
+        IF field-foreignkey-screencheck IS NOT INITIAL.
+          APPEND |  @AbapCatalog.foreignKey.screenCheck : { field-foreignkey-screencheck }| TO lt_ddldicts.
+        ENDIF.
+
+        lv_string = COND #( WHEN field-key = 'X' THEN `key ` ELSE `` ) && field-name.
+
+        IF field-adddesc IS NOT INITIAL.
+          APPEND |  @EndUserText.label : '{ field-adddesc }'| TO lt_ddldicts.
+        ENDIF.
+
+        IF field-addtion IS NOT INITIAL.
+          APPEND field-addtion TO lt_ddldicts.
+        ENDIF.
+
+
+        IF field-foreignkey-checktable IS INITIAL.
+          IF field-name IS INITIAL.
+            APPEND |  { field-type }{ COND #( WHEN field-nonull = 'X' THEN | not null| ) };| TO lt_ddldicts.
+          ELSE.
+            APPEND |  { lv_string WIDTH = me->field_max + 1 }: {
+                        field-type }{
+                        COND #( WHEN field-nonull = 'X' THEN | not null| ) };| TO lt_ddldicts.
+          ENDIF.
+        ELSE.
+          IF field-name IS INITIAL.
+            APPEND |  { field-type }{ COND #( WHEN field-nonull = 'X' THEN | not null| ) }| TO lt_ddldicts.
+          ELSE.
+            APPEND |  { lv_string WIDTH = me->field_max + 1 }: {
+                        field-type }{
+                        COND #( WHEN field-nonull = 'X' THEN | not null| ) }| TO lt_ddldicts.
+          ENDIF.
+
+          IF field-foreignkey-card = '' AND field-foreignkey-cardleft = ''.
+            APPEND |    with foreign key { field-foreignkey-checktable }| TO lt_ddldicts.
+          ELSE.
+            APPEND |    with foreign key [{
+                    COND string( WHEN field-foreignkey-card = '1' THEN '1'
+                                 WHEN field-foreignkey-card = 'C' THEN '0..1'
+                                 ELSE '0..*' ) },{
+                    COND string( WHEN field-foreignkey-cardleft = '1' THEN '1'
+                                 ELSE '0..1' ) }] {
+                    field-foreignkey-checktable }| TO lt_ddldicts.
+          ENDIF.
+          LOOP AT field-foreignkey-foreignkey_eq ASSIGNING FIELD-SYMBOL(<ls_eq>).
+            AT FIRST.
+              APPEND |      where { <ls_eq>-checkfield } = {
+                      COND string( WHEN <ls_eq>-forkey IS INITIAL THEN <ls_eq>-fortable
+                                   ELSE |{ <ls_eq>-fortable CASE = LOWER }.{
+                      <ls_eq>-forkey }| ) }| TO lt_ddldicts.
+              CONTINUE.
+            ENDAT.
+
+            APPEND |        and { <ls_eq>-checkfield } = {
+                    COND string( WHEN <ls_eq>-forkey IS INITIAL THEN <ls_eq>-fortable
+                                 ELSE |{ <ls_eq>-fortable CASE = LOWER }.{
+                    <ls_eq>-forkey }| ) }| TO lt_ddldicts.
+          ENDLOOP.
+          IF sy-subrc = 0.
+            lt_ddldicts[ lines( lt_ddldicts ) ] = lt_ddldicts[ lines( lt_ddldicts ) ] && ';'.
+          ENDIF.
+        ENDIF.
+
+      ENDLOOP.
+
+      APPEND INITIAL LINE TO lt_ddldicts.
+      APPEND `}` TO lt_ddldicts.
+
+      " 内表转换为长字符串
+      CONCATENATE LINES OF lt_ddldicts INTO lv_source SEPARATED BY c_newline.
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = lv_source
+                               IMPORTING buffer = <ls_file>-data ).
+
+      CLEAR: ls_dd02t, lv_string, lv_source.
+      REFRESH fields.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD fill_struct.
+    DATA: lv_source   TYPE string,
+          lt_ddldicts TYPE TABLE OF text1000.
+
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'TABS' ). " 特殊增量 TABL
+    me->o_pb->base_desc = `Process TABL Struct & `.
+    me->o_pb->count = lines( me->tdd02l ).
+
+    LOOP AT me->tdd02l INTO DATA(ls_dd02l).
+      me->o_pb->add( i_desc = ls_dd02l-tabname ).
+
+      IF is_delta( ) = 'X'.
+        IF ls_delt_log-ddate > ls_dd02l-as4date
+          OR ( ls_delt_log-ddate = ls_dd02l-as4date AND ls_delt_log-dtime > ls_dd02l-as4time ).
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      APPEND INITIAL LINE TO me->files ASSIGNING FIELD-SYMBOL(<ls_file>).
+
+      <ls_file>-name = split_folder( ls_dd02l-tabname )
+                    && ls_dd02l-tabname && '.' && c_extension_ddl.
+
+      <ls_file>-name = me->parent_folder && 'Struct/' && <ls_file>-name.
+
+      " 表描述
+      READ TABLE me->tdd02t INTO DATA(ls_dd02t) WITH KEY tabname = ls_dd02l-tabname BINARY SEARCH.
+
+      APPEND set_label( ls_dd02t-ddtext   ) TO lt_ddldicts. " 描述
+      APPEND set_encat( ls_dd02l-exclass  ) TO lt_ddldicts. " 增强类别
+
+      APPEND |define structure { ls_dd02l-tabname CASE = LOWER } \{| TO lt_ddldicts. " 表名
+
+      DATA(fields) = preproc_fields( ls_dd02l-tabname ).
+
+      LOOP AT fields INTO DATA(field).
+        IF field-adddesc IS NOT INITIAL.
+          APPEND |  @EndUserText.label : '{ field-adddesc }'| TO lt_ddldicts.
+        ENDIF.
+
+        IF field-addtion IS NOT INITIAL.
+          APPEND field-addtion TO lt_ddldicts.
+        ENDIF.
+
+        IF field-name IS INITIAL.
+          APPEND |  { field-type }{ COND #( WHEN field-nonull = 'X' THEN | not null| ) };| TO lt_ddldicts.
+        ELSE.
+          APPEND |  { field-name WIDTH = me->field_max + 1 }: {
+                      field-type }{
+                      COND #( WHEN field-nonull = 'X' THEN | not null| ) };| TO lt_ddldicts.
+        ENDIF.
+      ENDLOOP.
+
+      APPEND INITIAL LINE TO lt_ddldicts.
+      APPEND `}` TO lt_ddldicts.
+
+      " 内表转换为长字符串
+      CONCATENATE LINES OF lt_ddldicts INTO lv_source SEPARATED BY c_newline.
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = lv_source
+                               IMPORTING buffer = <ls_file>-data ).
+
+      CLEAR: ls_dd02t, lv_source.
+      REFRESH fields.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD preproc_fields.
+
+    READ TABLE me->tdd03l TRANSPORTING NO FIELDS WITH KEY tabname = tabname BINARY SEARCH.
+    IF sy-subrc = 0.
+      LOOP AT me->tdd03l INTO DATA(ls_dd03l) FROM sy-tabix.
+        IF tabname <> ls_dd03l-tabname.
+          EXIT.
+        ENDIF.
+
+        APPEND INITIAL LINE TO r_fields ASSIGNING FIELD-SYMBOL(<ls_field>).
+
+        " 字段名
+        <ls_field>-name   = |{ ls_dd03l-fieldname CASE = LOWER }|.
+
+        IF ls_dd03l-fieldname = '.INCLUDE' OR ls_dd03l-fieldname = '.INCLU--AP'.
+          " include | append 使用参考字段
+          CLEAR <ls_field>-name.
+
+          IF ls_dd03l-reffield IS NOT INITIAL.
+            <ls_field>-name = |{ ls_dd03l-reffield CASE = LOWER }|.
+          ENDIF.
+        ENDIF.
+
+        DATA(lv_fieldlen) = strlen( <ls_field>-name ).
+
+        IF ls_dd03l-keyflag = 'X'.
+          lv_fieldlen = lv_fieldlen + 3 + 1.
+        ENDIF.
+
+        IF me->field_max < lv_fieldlen.
+          me->field_max = lv_fieldlen.
+        ENDIF.
+
+        <ls_field>-key    = ls_dd03l-keyflag.
+        <ls_field>-nonull = ls_dd03l-notnull.
+
+        " 数据元素是否为空
+
+        IF ls_dd03l-rollname IS INITIAL
+          AND NOT ( ls_dd03l-fieldname = '.INCLUDE' " 切换为表取值后 include 的 rollname 为空
+                 OR ls_dd03l-fieldname = '.INCLU--AP' ).  " append 特殊类型
+          " 数据元素为空
+          <ls_field>-type = field_type( iv_datatype = ls_dd03l-datatype
+                                        iv_leng     = ls_dd03l-leng
+                                        iv_decimals = ls_dd03l-decimals ).
+
+          " 补充描述
+          READ TABLE me->tdd03t INTO DATA(ls_dd03t) WITH KEY tabname = ls_dd03l-tabname fieldname = ls_dd03l-fieldname BINARY SEARCH.
+          IF sy-subrc = 0.
+            <ls_field>-adddesc = ls_dd03t-ddtext.
+          ENDIF.
+        ELSE.
+          " 数据元素不为空
+
+          IF ls_dd03l-fieldname = '.INCLUDE'.
+            "<ls_field>-type = |include { ls_dd03l-rollname CASE = LOWER }|. " 函数有效
+            <ls_field>-type = |include { ls_dd03l-precfield CASE = LOWER }|. " 表有效
+          ELSEIF ls_dd03l-fieldname = '.INCLU--AP'.
+            " append 的类型
+            <ls_field>-type = |append { ls_dd03l-precfield CASE = LOWER } /* append 类型在 ddl 不会有, 导入时需删除 */|.
+          ELSE.
+            <ls_field>-type = |{ ls_dd03l-rollname CASE = LOWER }|.
+          ENDIF.
+
+        ENDIF.
+
+        CASE ls_dd03l-datatype.
+          WHEN 'CURR'.
+            <ls_field>-addtion = |  @Semantics.amount.currencyCode : '{
+                                    |{ ls_dd03l-reftable CASE = LOWER }| }.{
+                                       ls_dd03l-reffield CASE = LOWER }'|.
+          WHEN 'QUAN'.
+            <ls_field>-addtion = |  @Semantics.quantity.unitOfMeasure : '{
+                                    |{ ls_dd03l-reftable CASE = LOWER }| }.{
+                                       ls_dd03l-reffield CASE = LOWER }'|.
+          WHEN 'LANG'.
+            <ls_field>-addtion = |  @AbapCatalog.textLanguage|.
+          WHEN OTHERS.
+        ENDCASE.
+
+        READ TABLE me->tdd08l INTO DATA(ls_dd08l) WITH KEY tabname = ls_dd03l-tabname fieldname = ls_dd03l-fieldname BINARY SEARCH.
+        IF sy-subrc = 0.
+          <ls_field>-foreignkey-label = ls_dd08l-ddtext.
+          <ls_field>-foreignkey-screencheck = COND #( WHEN ls_dd08l-frkart IS INITIAL THEN 'false' ELSE 'true' ).
+          IF ls_dd08l-cardleft IS INITIAL
+            AND ls_dd08l-card IS INITIAL.
+            <ls_field>-foreignkey-screencheck = 'true'.
+          ENDIF.
+
+          <ls_field>-foreignkey-keytype  = ls_dd08l-frkart.
+          <ls_field>-foreignkey-cardleft = ls_dd08l-cardleft.
+          <ls_field>-foreignkey-card     = ls_dd08l-card.
+          <ls_field>-foreignkey-checktable  = |{ ls_dd08l-checktable CASE = LOWER }|.
+        ENDIF.
+
+        READ TABLE me->tdd05q TRANSPORTING NO FIELDS WITH KEY tabname = ls_dd03l-tabname fieldname = ls_dd03l-fieldname BINARY SEARCH.
+        IF sy-subrc = 0.
+          LOOP AT me->tdd05q INTO DATA(ls_dd05q) FROM sy-tabix.
+            IF ls_dd05q-tabname <> ls_dd03l-tabname
+            OR ls_dd05q-fieldname <> ls_dd03l-fieldname.
+              EXIT.
+            ENDIF.
+
+            CHECK ls_dd05q-fortable <> '*'.
+
+            APPEND VALUE #( fortable = ls_dd05q-fortable
+                            forkey   = |{ ls_dd05q-forkey CASE = LOWER }|
+                            checkfield = |{ ls_dd05q-checkfield CASE = LOWER }| ) TO <ls_field>-foreignkey-foreignkey_eq.
+          ENDLOOP.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD field_type.
+    CASE iv_datatype.
+      WHEN 'DATS' OR 'TIMS'.
+        rv_type = |abap.{ iv_datatype CASE = LOWER }|.
+      WHEN 'CHAR' OR 'NUMC'.
+        rv_type = |abap.{ iv_datatype CASE = LOWER }({ CONV i( iv_leng ) })|.
+      WHEN 'CURR'.
+        rv_type = |abap.{ iv_datatype CASE = LOWER }({ CONV i( iv_leng ) },{  CONV i( iv_decimals ) })|.
+      WHEN 'DEC'.
+        rv_type = |abap.{ iv_datatype CASE = LOWER }({ CONV i( iv_leng ) },{  CONV i( iv_decimals ) })|.
+      WHEN 'QUAN'.
+        rv_type = |abap.{ iv_datatype CASE = LOWER }({ CONV i( iv_leng ) },{  CONV i( iv_decimals ) })|.
+      WHEN 'STRG'.
+        rv_type = |abap.string({ CONV i( iv_leng ) })|.
+      WHEN 'INT4' OR 'INT1' OR 'INT2' OR 'INT8'.
+        rv_type = |abap.{ iv_datatype CASE = LOWER }|.
+      WHEN OTHERS.
+        rv_type = iv_datatype && '-' && iv_leng.
+    ENDCASE.
+  ENDMETHOD.
+
+  METHOD set_label.
+    " 描述
+    rv_str = |@EndUserText.label : '{ str }'|.
+  ENDMETHOD.
+  METHOD set_encat.
+    " 增强类别
+
+    " #NOT_CLASSIFIED         - 未分类
+    " #NOT_EXTENSIBLE         - 无法增强（扩展）
+    " #EXTENSIBLE_CHARACTER   - 可以增强（扩展）并且类似于角色
+    " #EXTENSIBLE_CHARACTER_NUMERIC - 可以增强（扩展），并且是类似字符或数字的
+    " #EXTENSIBLE_ANY         - 可以以任何方式增强（扩展）
+    CASE str.
+      WHEN '0'.
+        rv_str = |@AbapCatalog.enhancementCategory : #{ 'NOT_CLASSIFIED' }|.
+      WHEN '1'.
+        rv_str = |@AbapCatalog.enhancementCategory : #{ 'NOT_EXTENSIBLE' }|.
+      WHEN '2'.
+        rv_str = |@AbapCatalog.enhancementCategory : #{ 'EXTENSIBLE_CHARACTER' }|.
+      WHEN '3'.
+        rv_str = |@AbapCatalog.enhancementCategory : #{ 'EXTENSIBLE_CHARACTER_NUMERIC' }|.
+      WHEN '4'.
+        rv_str = |@AbapCatalog.enhancementCategory : #{ 'EXTENSIBLE_ANY' }|.
+      WHEN OTHERS.
+    ENDCASE.
+  ENDMETHOD.
+  METHOD set_tabty.
+    " 表类别
+
+    " #TRANSPARENT            - 透明表
+    " #GLOBAL_TEMPORARY       - 全局临时表 （GTT）
+    rv_str = |@AbapCatalog.tableCategory : { '#TRANSPARENT' }|.
+  ENDMETHOD.
+  METHOD set_edits.
+    " 维护方式
+
+    " RESTRICTED   - 补充
+    " #NOT_ALLOWED - 无显示/编辑
+    " #LIMITED     - 有限的显示/编辑
+    " #ALLOWED     - 允许显示/编辑
+    CASE str.
+      WHEN ''.
+        rv_str = |@AbapCatalog.dataMaintenance : #{ 'RESTRICTED' }|.
+      WHEN 'D'.
+        rv_str = |@AbapCatalog.dataMaintenance : #{ 'LIMITED' }|.
+      WHEN 'N'.
+        rv_str = |@AbapCatalog.dataMaintenance : #{ 'NOT_ALLOWED' }|.
+      WHEN 'X'.
+        rv_str = |@AbapCatalog.dataMaintenance : #{ 'ALLOWED' }|.
+      WHEN OTHERS.
+    ENDCASE.
+  ENDMETHOD.
+  METHOD set_deliv.
+    " 交付类
+
+    " #A - delivery class A
+    " #C - delivery class C
+    " #L - delivery class L
+    " #G - delivery class G
+    " #E - delivery class E
+    " #S - delivery class S
+    " #W - delivery class W
+    rv_str = |@AbapCatalog.deliveryClass : #{ COND #( WHEN str IS INITIAL THEN 'A' ELSE str ) }|.
+  ENDMETHOD.
+  METHOD set_actty.
+    " 激活类型
+
+    " #NOT_CLASSIFIED             - 激活类型 00
+    " #NAMETAB_GENERATION_OFFLINE - 激活类型 01
+    " #ADAPT_C_STRUCTURES         - 激活类型 02
+    " #INITIAL_TABLE_REQUIRED     - 激活类型 10
+    CASE str.
+      WHEN '00'.
+        rv_str = |@AbapCatalog.activationType : #{ 'NOT_CLASSIFIED' }|.
+      WHEN '01'.
+        rv_str = |@AbapCatalog.activationType : #{ 'NAMETAB_GENERATION_OFFLINE' }|.
+      WHEN '02'.
+        rv_str = |@AbapCatalog.activationType : #{ 'ADAPT_C_STRUCTURES' }|.
+      WHEN '10'.
+        rv_str = |@AbapCatalog.activationType : #{ 'INITIAL_TABLE_REQUIRED' }|.
+      WHEN OTHERS.
+    ENDCASE.
+  ENDMETHOD.
+  METHOD set_repla.
+    " 替换对象
+    rv_str = |@AbapCatalog.replacementObject : { str }|.
+  ENDMETHOD.
+  METHOD set_define.
+    " 表名
+    rv_str = |define table { str } \{|.
+  ENDMETHOD.
+
+  METHOD loadfiles.
+    DATA: lt_tabcls TYPE TABLE OF tabclass.
+
+    " table & struct
+    lt_tabcls = VALUE #( ( 'TRANSP' ) ( 'INTTAB' ) ).
+
+    LOOP AT lt_tabcls INTO DATA(lv_tabcls).
+
+      get_base( lv_tabcls ).
+
+      CHECK me->tdd02l IS NOT INITIAL.
+
+      IF lv_tabcls = 'TRANSP'.
+        get_transp_more( ).
+      ENDIF.
+
+      " FILL FILE
+      IF lv_tabcls = 'TRANSP'.
+        fill_table( ).
+      ELSEIF lv_tabcls = 'INTTAB'.
+        fill_struct( ).
+      ENDIF.
+
+      REFRESH: me->tdd02l, me->tdd02t, me->tdd03l,
+               me->tdd03t, me->tdd05q, me->tdd08l.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD split_folder.
+    DATA: l_limit TYPE ty_split_limit.
+
+    l_limit = i_limit.
+
+    " rv_filename = .
+  ENDMETHOD.
+
+  METHOD load2zip.
+
+    CHECK io_zip IS BOUND.
+
+    LOOP AT me->files INTO DATA(file).
+      io_zip->add( name    = file-name
+                   content = file-data ).
+    ENDLOOP.
+
+  ENDMETHOD.
+ENDCLASS.
+CLASS lcl_backup4abap_object_doma IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( ).
+
+    me->o_pb = NEW #( `Process Domain & ` ).
+    me->parent_folder = 'SE11/Domain' && '/'.
+  ENDMETHOD.
+
+  METHOD loadfiles.
+    " 数据元素和数据域对应关系 DD04L
+    " 数据域值     DD07L
+    " 数据域文本   DD01T
+    " 数据域       DD01L
+
+    " 数据域
+    " 目的便于查看与还原
+    DATA: ls_doma   TYPE ty_doma,
+          lv_source TYPE string.
+
+    " 数据获取
+    SELECT
+      dd~domname,
+      dd~as4user,
+      dd~as4date,
+      dd~as4time,
+      dt~ddtext
+      FROM dd01l AS dd
+      INNER JOIN tadir AS ta ON dd~domname = ta~obj_name
+      LEFT JOIN dd01t AS dt ON dt~domname = dd~domname AND dt~ddlanguage = @sy-langu
+                           AND dt~as4local = dd~as4local AND dt~as4vers = dd~as4vers
+      WHERE ta~pgmid = 'R3TR'
+        AND ta~object = 'DOMA'
+        AND ta~devclass IN @s_pack
+        AND dd~as4local = 'A'
+        AND ta~obj_name IN @s_objnam " dd~domname
+      INTO TABLE @DATA(lt_dd01l).
+
+    " 获取域值
+    IF lt_dd01l IS NOT INITIAL.
+      SELECT
+        dl~domname,
+        dl~valpos,
+        dt~ddtext,
+        dl~domvalue_l,
+        dl~domvalue_h,
+        dl~appval     " 附加
+        FROM dd07l AS dl
+        LEFT JOIN dd07t AS dt ON dt~domname  = dl~domname
+                             AND dt~valpos   = dl~valpos
+                             AND dt~as4vers  = dl~as4vers
+                             AND dt~ddlanguage = @sy-langu
+        FOR ALL ENTRIES IN @lt_dd01l
+        WHERE dl~domname = @lt_dd01l-domname
+        INTO TABLE @DATA(lt_dd07).
+      SORT lt_dd07 BY domname valpos.
+    ENDIF.
+
+    me->o_pb->count = lines( lt_dd01l ).
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'DOMA' ).
+
+    LOOP AT lt_dd01l INTO DATA(ls_dd01).
+      me->o_pb->add( i_desc = ls_dd01-domname ).
+
+      IF is_delta( ) = 'X'.
+        IF ls_delt_log-ddate > ls_dd01-as4date
+          OR ( ls_delt_log-ddate = ls_dd01-as4date AND ls_delt_log-dtime > ls_dd01-as4time ).
+
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      APPEND INITIAL LINE TO me->files ASSIGNING FIELD-SYMBOL(<ls_file>).
+
+      <ls_file>-name = split_folder( ls_dd01-domname )
+                    && ls_dd01-domname && '.' && c_extension_json.
+
+      <ls_file>-name = me->parent_folder && <ls_file>-name.
+
+      " 生成 json 文件
+      ls_doma-domname = ls_dd01-domname.
+      ls_doma-as4user = ls_dd01-as4user.
+      ls_doma-as4date = ls_dd01-as4date.
+      ls_doma-as4time = ls_dd01-as4time.
+
+      READ TABLE lt_dd07 TRANSPORTING NO FIELDS WITH KEY domname = ls_dd01-domname BINARY SEARCH.
+      IF sy-subrc = 0.
+        LOOP AT lt_dd07 INTO DATA(ls_dd07) FROM  sy-tabix.
+          IF ls_dd07-domname <> ls_dd01-domname.
+            EXIT.
+          ENDIF.
+
+          APPEND CORRESPONDING #( ls_dd07 ) TO ls_doma-values.
+        ENDLOOP.
+      ENDIF.
+
+      GET REFERENCE OF ls_doma INTO DATA(lo_doma).
+
+      lv_source = /ui2/cl_json=>serialize( data = lo_doma
+                                    pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+      CLEAR ls_doma.
+
+      lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = lv_source
+                               IMPORTING buffer = <ls_file>-data ).
+
+      CLEAR: ls_doma, lv_source.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD split_folder.
+    DATA: l_limit TYPE ty_split_limit.
+
+    l_limit = i_limit.
+
+    " rv_filename = .
+  ENDMETHOD.
+
+  METHOD load2zip.
+
+    CHECK io_zip IS BOUND.
+
+    LOOP AT me->files INTO DATA(file).
+      io_zip->add( name    = file-name
+                   content = file-data
+                   compress_level = 9 ).
+    ENDLOOP.
+
+  ENDMETHOD.
+ENDCLASS.
+CLASS lcl_backup4abap_object_dtel IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( ).
+
+    me->o_pb = NEW #( `Process DTEL & ` ).
+    me->parent_folder = 'SE11/Element' && '/'.
+  ENDMETHOD.
+
+  METHOD loadfiles.
+
+    " 数据元素和数据域对应关系 DD04L
+
+    " 数据元素
+    " 目的便于查看与还原
+    DATA: ls_elem TYPE ty_elem.
+    DATA: lv_source TYPE string.
+
+    " 数据获取
+    SELECT
+      dd~rollname,
+      dd~domname,
+      dd~as4user,
+      dd~as4date,
+      dd~as4time,
+      dd~datatype,
+      dd~leng,
+      dd~decimals,
+      dd~outputlen,
+      dd~lowercase,
+      dd~convexit,
+      dd~entitytab,
+      dd~refkind,
+      dt~ddtext,
+      dt~reptext,
+      dt~scrtext_s,
+      dt~scrtext_m,
+      dt~scrtext_l
+      FROM dd04l AS dd
+      INNER JOIN tadir AS ta ON dd~rollname = ta~obj_name
+      LEFT JOIN dd04t AS dt ON dt~rollname = dd~rollname AND dt~ddlanguage = dd~dtelmaster
+                           AND dt~as4local = dd~as4local AND dt~as4vers = dd~as4vers
+      WHERE ta~pgmid = 'R3TR'
+        AND ta~object = 'DTEL'
+        AND ta~devclass IN @s_pack
+        AND dd~as4local = 'A'
+        AND ta~obj_name IN @s_objnam " dd~rollname
+      INTO TABLE @DATA(lt_dd04l).
+
+    CHECK lt_dd04l IS NOT INITIAL.
+
+    me->o_pb->count = lines( lt_dd04l ).
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'DTEL' ).
+
+    LOOP AT lt_dd04l INTO DATA(ls_dd04).
+      me->o_pb->add( i_desc = ls_dd04-rollname ).
+
+      " 检查增量
+      IF is_delta( ) = 'X'.
+        IF ls_delt_log-ddate > ls_dd04-as4date
+          OR ( ls_delt_log-ddate = ls_dd04-as4date AND ls_delt_log-dtime > ls_dd04-as4time ).
+
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      APPEND INITIAL LINE TO me->files ASSIGNING FIELD-SYMBOL(<ls_file>).
+
+      <ls_file>-name = split_folder( ls_dd04-rollname )
+                    && ls_dd04-rollname && '.' && c_extension_json.
+
+      <ls_file>-name = me->parent_folder && <ls_file>-name.
+
+      " 生成 json 文件
+      MOVE-CORRESPONDING ls_dd04 TO ls_elem.
+
+      GET REFERENCE OF ls_elem INTO DATA(lo_elem).
+
+      lv_source = /ui2/cl_json=>serialize( data = lo_elem
+                                    pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+
+      lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = lv_source
+                               IMPORTING buffer = <ls_file>-data ).
+      CLEAR: ls_elem, lv_source.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD split_folder.
+    DATA: l_limit TYPE ty_split_limit.
+
+    l_limit = i_limit.
+
+    " rv_filename = .
+  ENDMETHOD.
+
+  METHOD load2zip.
+
+    CHECK io_zip IS BOUND.
+
+    LOOP AT me->files INTO DATA(file).
+      io_zip->add( name    = file-name
+                   content = file-data ).
+    ENDLOOP.
+
+  ENDMETHOD.
+ENDCLASS.
+CLASS lcl_backup4abap_object_ttyp IMPLEMENTATION.
+
+  METHOD constructor.
+    super->constructor( ).
+
+    me->o_pb = NEW #( `Process TTYP & ` ).
+    me->parent_folder = 'SE11/TABLETYPE' && '/'.
+  ENDMETHOD.
+
+  METHOD loadfiles.
+    " 表类型     DD40L
+    " 表类型文本 DD40T
+
+    " 目的便于查看
+    DATA: ls_ttyp   TYPE ty_ttyp,
+          lv_source TYPE string.
+
+    " rowkind => 'E'  基本类型\'S'  结构类型\'L'  表格类型\' ' 直接类型条目\'R' 参考类型\'D'  域
+
+    " 数据获取
+    SELECT
+      dd~typename,
+      dd~rowtype,
+      dd~rowkind,
+      dd~datatype,
+      dd~leng,
+      dd~decimals,
+      dd~accessmode,
+      dd~keydef,
+      dd~keykind,
+      dd~keyfdcount,
+      dd~generic,
+      dd~typelen,
+      dd~as4user,
+      dd~as4date,
+      dd~as4time,
+      dt~ddtext
+      FROM dd40l AS dd
+      INNER JOIN tadir AS ta ON dd~typename = ta~obj_name
+      LEFT JOIN dd40t AS dt ON dt~typename = dd~typename AND dt~ddlanguage = @sy-langu
+      WHERE ta~pgmid = 'R3TR'
+        AND ta~object = 'TTYP'
+        AND ta~devclass IN @s_pack
+        AND dd~as4local = 'A'
+        AND ta~obj_name IN @s_objnam "dd~typename
+      INTO TABLE @DATA(lt_dd40l).
+
+    CHECK lt_dd40l IS NOT INITIAL.
+
+    me->o_pb->count = lines( lt_dd40l ).
+    DATA(ls_delt_log) = lcl_backup4abap_filter_time=>factory( )->get( 'TTYP' ).
+
+    LOOP AT lt_dd40l INTO DATA(ls_dd40).
+      me->o_pb->add( i_desc = ls_dd40-typename ).
+
+      " 检查增量
+      IF is_delta( ) = 'X'.
+        IF ls_delt_log-ddate > ls_dd40-as4date
+          OR ( ls_delt_log-ddate = ls_dd40-as4date AND ls_delt_log-dtime > ls_dd40-as4time ).
+
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
+      APPEND INITIAL LINE TO me->files ASSIGNING FIELD-SYMBOL(<ls_file>).
+
+      <ls_file>-name = split_folder( ls_dd40-typename )
+                    && ls_dd40-typename && '.' && c_extension_json.
+
+      <ls_file>-name = me->parent_folder && <ls_file>-name.
+
+      " 生成 json 文件
+      MOVE-CORRESPONDING ls_dd40 TO ls_ttyp.
+
+      GET REFERENCE OF ls_ttyp INTO DATA(lo_ttyp).
+
+      lv_source = /ui2/cl_json=>serialize( data = lo_ttyp
+                                    pretty_name = /ui2/cl_json=>pretty_mode-camel_case ).
+
+      lv_source = lcl_pretty_json=>pretty( lv_source ).
+
+      " string -> xstring
+      me->o_conv_out->convert( EXPORTING data   = lv_source
+                               IMPORTING buffer = <ls_file>-data ).
+      CLEAR: ls_ttyp, lv_source.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD split_folder.
+    DATA: l_limit TYPE ty_split_limit.
+
+    l_limit = i_limit.
+
+    " rv_filename = .
+  ENDMETHOD.
+
+  METHOD load2zip.
+
+    CHECK io_zip IS BOUND.
+
+    LOOP AT me->files INTO DATA(file).
+      io_zip->add( name    = file-name
+                   content = file-data ).
+    ENDLOOP.
+
+  ENDMETHOD.
+ENDCLASS.
 
 CLASS lcl_backup4abap_object_ddls IMPLEMENTATION.
 
@@ -1693,7 +2873,6 @@ CLASS lcl_backup4abap_object_ddls IMPLEMENTATION.
 
     LOOP AT lt_ddlsrc INTO DATA(ls_ddl).
       me->o_pb->add( i_desc = ls_ddl-ddlname ).
-      " 文件夹匹配 -> 文件名
 
       " 检查增量
       IF is_delta( ) = 'X'.
@@ -1870,4 +3049,31 @@ CLASS lcl_progress_bar IMPLEMENTATION.
         text       = lv_text.
   ENDMETHOD.
 
+ENDCLASS.
+CLASS lcl_pretty_json IMPLEMENTATION.
+  METHOD pretty.
+
+    "cloud
+    " DATA(json_xstring) = cl_abap_conv_codepage=>create_out( )->convert( json ).
+    "on_premise
+    DATA(json_xstring) = cl_abap_codepage=>convert_to( json ).
+
+    "Check and pretty print JSON
+
+    DATA(reader) = cl_sxml_string_reader=>create( json_xstring ).
+    DATA(writer) = CAST if_sxml_writer(
+                          cl_sxml_string_writer=>create( type = if_sxml=>co_xt_json ) ).
+    writer->set_option( option = if_sxml_writer=>co_opt_linebreaks ).
+    writer->set_option( option = if_sxml_writer=>co_opt_indent ).
+    reader->next_node( ).
+    reader->skip_node( writer ).
+
+    "cloud
+    " DATA(json_formatted_string) = cl_abap_conv_codepage=>create_in( )->convert( CAST cl_sxml_string_writer( writer )->get_output( ) ).
+    "on premise
+    DATA(json_formatted_string) = cl_abap_codepage=>convert_from( CAST cl_sxml_string_writer( writer )->get_output( ) ).
+
+    pretty_json = escape( val = json_formatted_string format = cl_abap_format=>e_xml_text  ).
+
+  ENDMETHOD.
 ENDCLASS.
