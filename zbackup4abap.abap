@@ -1246,9 +1246,7 @@ FORM frm_get_class .
 
   " 读取类
   DATA: lo_source   TYPE REF TO object,
-        lo_instance TYPE REF TO object.
-  DATA: lr_source TYPE REF TO cl_oo_source,
-        ls_clskey TYPE seoclskey.
+        lo_instance TYPE REF TO object. 
 
   CALL METHOD ('CL_OO_FACTORY')=>('CREATE_INSTANCE')
     RECEIVING
