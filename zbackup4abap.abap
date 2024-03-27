@@ -91,6 +91,7 @@ DATA: gt_range_append_class TYPE RANGE OF vseoclass-clsname.
 DATA: gt_delt_log TYPE TABLE OF ty_delt_log.
 
 DATA: gt_range_objname TYPE RANGE OF tadir-obj_name.
+DATA: gt_range_funcname TYPE RANGE OF tfdir-funcname.
 
 DATA: gv_delta_store_id TYPE char30.
 CONSTANTS: gc_delta_store_id_fix_part TYPE char18 VALUE 'DeltaDownload'.
@@ -117,6 +118,18 @@ SELECTION-SCREEN BEGIN OF BLOCK blck1 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_clas FOR FIELD p_clas.
     PARAMETERS: p_clas AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
+  " code hook 隐式
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_choka FOR FIELD p_choka.
+    PARAMETERS: p_choka AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
+  " code hook 插入
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_chokb FOR FIELD p_chokb.
+    PARAMETERS: p_chokb AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
 
   " Text
@@ -330,6 +343,8 @@ FORM frm_init_text .
   t_xslt = '转换'.
   t_text = '程序文本'.
   t_msag = '消息类'.
+  t_choka = 'code hook 隐式'.
+  t_chokb = 'code hook 插入'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -555,6 +570,16 @@ FORM frm_get_code .
     PERFORM frm_get_class.
   ENDIF.
 
+  IF p_choka = abap_true.
+    PERFORM frm_set_parent_folder USING `ENHO/HOOK_IMPL/`.
+    PERFORM frm_get_enho_impl.
+  ENDIF.
+
+  IF p_chokb = abap_true.
+    PERFORM frm_set_parent_folder USING `ENHO/HOOK_CODE/`.
+    PERFORM frm_get_enho_code.
+  ENDIF.
+
   IF p_text = abap_true.
     PERFORM frm_set_parent_folder USING `TEXT/`.
     PERFORM frm_get_text.
@@ -643,7 +668,7 @@ FORM frm_get_report .
     LEFT JOIN trdirt AS des ON des~name = rep~progname AND des~sprsl = @sy-langu
     WHERE (
          ( rep~subc = '1' )
-      OR ( rep~subc = 'I' AND rep~rload = '1' )
+      OR ( rep~subc = 'I' ) "AND rep~rload = '1' ) " 主语言
       OR ( rep~subc = 'M' )
       OR ( rep~subc = 'T' ) )
       AND rep~r3state = 'A'
@@ -779,7 +804,14 @@ FORM frm_get_function .
 
   CREATE OBJECT lr_pb.
 
-  " 此处获取所有的 Z* 函数组数据
+  IF gt_range_funcname IS INITIAL.
+    gt_range_funcname = VALUE #( sign = 'E' option = 'CP'
+      ( low = 'TABLEFRAME_*' ) ( low = 'TABLEPROC_*' )
+      ( low = 'VIEWFRAME_*' ) ( low = 'VIEWPROC_*' )
+    ).
+  ENDIF.
+
+  " 此处获取所有的 Z* 函数组数据(除表维护)
   SELECT
     fu~funcname AS functionname,
     gr~area     AS functiongroup,
@@ -789,7 +821,7 @@ FORM frm_get_function .
     INNER JOIN tfdir AS fu ON fu~funcname = gr~funcname
     LEFT JOIN tadir AS tad ON tad~obj_name = gr~area AND tad~object = 'FUGR'
     WHERE gr~area IN @gt_range_objname    " 限制函数组（部分标准程序也会有Z开头的函数）
-      AND gr~funcname IN @gt_range_objname
+      AND gr~funcname IN @gt_range_funcname
       AND tad~devclass IN @gt_range_devclass
     INTO CORRESPONDING FIELDS OF TABLE @lt_func.
   IF lt_func IS NOT INITIAL.
@@ -1246,7 +1278,7 @@ FORM frm_get_class .
 
   " 读取类
   DATA: lo_source   TYPE REF TO object,
-        lo_instance TYPE REF TO object. 
+        lo_instance TYPE REF TO object.
 
   CALL METHOD ('CL_OO_FACTORY')=>('CREATE_INSTANCE')
     RECEIVING
@@ -1388,6 +1420,227 @@ FORM frm_get_class .
   " map 文件
   PERFORM frm_add_map_file USING gv_parent_folder.
 
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form FRM_GET_ENHO_IMPL
+*&---------------------------------------------------------------------*
+*&  增强
+*&---------------------------------------------------------------------*
+FORM frm_get_enho_impl .
+  DATA: lv_filename TYPE string.
+  DATA: l_data TYPE enh_hook_admin.
+  DATA: lt_source  TYPE TABLE OF string WITH EMPTY KEY,
+        lv_source  TYPE string,
+        lv_xstring TYPE xstring.
+
+  " 隐式增强
+
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+  CREATE OBJECT lr_pb.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'ENHA' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'ENHA' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  SELECT
+    en~enhname,
+    en~enhtooltype
+    FROM enhheader AS en
+    INNER JOIN tadir AS ta ON ta~obj_name = en~enhname AND ta~object = 'ENHO'
+    WHERE en~enhtooltype = 'HOOK_IMPL' " 增强工具 -> 隐式增强
+      AND en~version = 'A'
+      AND ta~author <> 'SAP'
+    " AND ta~obj_name IN @gt_range_objname
+      AND ta~devclass IN @gt_range_devclass
+    INTO TABLE @DATA(lt_enhname).
+
+  lr_pb->count = lines( lt_enhname ).
+  lr_pb->base_desc = 'Process Hook impl & '.
+
+  SELECT
+    log~enhname,
+    log~logid,
+    log~activate_user,
+    log~activate_date,
+    log~activate_time
+    FROM enhlog AS log
+    FOR ALL ENTRIES IN @lt_enhname
+    WHERE version = 'A'
+      AND enhname = @lt_enhname-enhname
+    INTO TABLE @DATA(lt_log).
+  SORT lt_log BY enhname logid DESCENDING.
+  DELETE ADJACENT DUPLICATES FROM lt_log COMPARING enhname.
+
+  LOOP AT lt_enhname INTO DATA(ls_enhn).
+    lr_pb->add( i_desc = ls_enhn-enhname ).
+
+    lv_filename = ls_enhn-enhname && '.' && gc_extension_name.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ''.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " 日志 生成
+    READ TABLE lt_log INTO DATA(ls_log) WITH KEY enhname = ls_enhn-enhname BINARY SEARCH.
+    PERFORM frm_set_log_flow USING 'ENHO' ls_log-enhname ls_log-activate_user ls_log-activate_date ls_log-activate_time.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_log-activate_date
+        OR ( ls_delt_log-ddate = ls_log-activate_date AND ls_delt_log-dtime > ls_log-activate_time ).
+        CLEAR: lv_filename, l_data.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    SELECT SINGLE data FROM enhheader WHERE enhname = @ls_enhn-enhname AND version = 'A'
+          INTO @DATA(l_datax).
+
+    CALL METHOD cl_enh_utilities_xstring=>get_data
+      EXPORTING
+        pi_xstring = l_datax
+      IMPORTING
+        pe_output  = l_data.
+
+    LOOP AT l_data-save_enhincinx INTO DATA(ls_indx).
+      APPEND `* >> begin --------------------------------------------------------------------` TO lt_source.
+
+      CONCATENATE `* ` ls_indx-full_name gc_newline INTO lv_source.
+      APPEND lv_source TO lt_source.
+      CLEAR lv_source.
+
+      READ TABLE l_data-hook_impls INTO DATA(l_hi) WITH KEY id = ls_indx-id.
+      IF sy-subrc = 0.
+        APPEND LINES OF l_hi-source TO lt_source.
+      ENDIF.
+
+      APPEND `* <<  end  --------------------------------------------------------------------` TO lt_source.
+    ENDLOOP.
+
+    " 内表转换为长字符串
+    CONCATENATE LINES OF lt_source INTO lv_source SEPARATED BY gc_newline.
+
+    " string -> xstring
+    gr_cover_out->convert(
+          EXPORTING data = lv_source
+          IMPORTING buffer = lv_xstring ).
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = lv_xstring ).
+
+    " 清除缓存
+    REFRESH lt_source.
+    CLEAR: l_datax, l_data, ls_indx, l_hi, lv_source, lv_xstring, lv_filename.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_enho_code
+*&---------------------------------------------------------------------*
+*&  代码插入
+*&---------------------------------------------------------------------*
+FORM frm_get_enho_code .
+  DATA: lv_filename TYPE string.
+
+  " 无法通过包处理
+  CHECK gt_range_devclass IS INITIAL.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'ENHB' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'ENHB' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  " 代码插入
+  DATA(lt_bu_delt)       = gt_delt_log.
+  DATA(lt_bu_objc)       = gt_range_objname.
+  DATA(lt_bu_func)       = gt_range_funcname.
+  DATA(lv_parent_folder) = gv_parent_folder.
+  CLEAR: gt_delt_log, gt_range_objname.
+
+  DATA: lt_range_obj_name TYPE RANGE OF smodilog-obj_name.
+
+  " 只需要获取标准程序 非标的已在其他 form 中获取
+  lt_range_obj_name = VALUE #( sign = 'E' option = 'CP' ( low = 'Z*' )
+                                                        ( low = 'Y*' ) ).
+
+  SELECT
+    obj_type,
+    obj_name,
+    sub_type,
+    sub_name,
+    main_prog,
+
+    mod_user,
+    mod_date,
+    mod_time
+    FROM smodilog
+    WHERE operation = 'MOD'
+      AND obj_name IN @lt_range_obj_name
+    INTO TABLE @DATA(lt_smodilog).
+  SORT lt_smodilog BY obj_type.
+
+  LOOP AT lt_smodilog REFERENCE INTO DATA(lr_smodilog).
+    IF p_delt = 'X' AND ( ls_delt_log-ddate > lr_smodilog->mod_date
+      OR ( ls_delt_log-ddate = lr_smodilog->mod_date AND ls_delt_log-dtime > lr_smodilog->mod_time ) ).
+
+      " pass
+    ELSE.
+
+      APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->obj_name ) TO gt_range_objname.
+
+      IF lr_smodilog->obj_type = 'FUGR'.
+        APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_funcname.
+      ENDIF.
+
+    ENDIF.
+
+    AT END OF obj_type.
+
+      IF gt_range_objname IS NOT INITIAL.
+        SORT gt_range_objname BY low.
+        DELETE ADJACENT DUPLICATES FROM gt_range_objname COMPARING low.
+
+        CASE lr_smodilog->obj_type.
+          WHEN 'CLAS'.
+            gv_parent_folder = lv_parent_folder && `SE24/`.
+            PERFORM frm_get_class.
+          WHEN 'FUGR'.
+            gv_parent_folder = lv_parent_folder && `SE37/`.
+            PERFORM frm_get_function.
+          WHEN 'PROG'.
+            gv_parent_folder = lv_parent_folder && `SE38/`.
+            PERFORM frm_get_report.
+        ENDCASE.
+      ENDIF.
+
+      REFRESH gt_range_objname.
+    ENDAT.
+
+  ENDLOOP.
+
+  gt_delt_log       = lt_bu_delt.
+  gt_range_objname  = lt_bu_objc.
+  gt_range_funcname = lt_bu_func.
+  gv_parent_folder  = lv_parent_folder.
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_get_text
