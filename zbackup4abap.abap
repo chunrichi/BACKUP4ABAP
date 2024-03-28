@@ -234,6 +234,7 @@ SELECTION-SCREEN BEGIN OF BLOCK brun WITH FRAME.
 SELECTION-SCREEN END OF BLOCK brun.
 
 SELECTION-SCREEN FUNCTION KEY 1.
+SELECTION-SCREEN FUNCTION KEY 2.
 
 *&----------------------------------------------------------------------
 *                     Initialization
@@ -265,6 +266,10 @@ AT SELECTION-SCREEN.
 
   IF sy-ucomm = 'FC01'.
     PERFORM frm_display_timestamp.
+  ELSEIF sy-ucomm = 'FC02'.
+    CLEAR: p_prog, p_func, p_clas, p_choka, p_chokb, p_text, p_msag,
+           p_tabl, p_cdsv, p_doma, p_dtel, p_ttyp,
+           p_smw0, p_tran, p_xslt.
   ENDIF.
 
 
@@ -355,6 +360,10 @@ FORM frm_init_text .
   sscrfields-functxt_01 = VALUE smp_dyntxt(
     quickinfo = '当前增量时戳'
     text      = '增量信息' ).
+
+  sscrfields-functxt_02 = VALUE smp_dyntxt(
+    quickinfo = '取消全选'
+    text      = '取消全选' ).
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form frm_check
@@ -562,7 +571,7 @@ FORM frm_get_code .
 
   IF p_func = abap_true.
     PERFORM frm_set_parent_folder USING `SE37/`.
-    PERFORM frm_get_function.
+    PERFORM frm_get_function USING ''.
   ENDIF.
 
   IF p_clas = abap_true.
@@ -780,7 +789,7 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 *&  获取函数
 *&---------------------------------------------------------------------*
-FORM frm_get_function .
+FORM frm_get_function USING ench_flag TYPE flag.
 
   " V_FDIR 查找功能模块的视图（函数名 函数组名）
   "  TFDIR   功能模块 （实际程序名）
@@ -935,11 +944,18 @@ FORM frm_get_function .
   CHECK lt_func IS NOT INITIAL.
 
   DATA: lt_area TYPE RANGE OF reposrc-progname.
-  LOOP AT lt_func INTO DATA(ls_area).
-    APPEND VALUE #( sign = 'I' option = 'CP' low = |L{ ls_area-functiongroup }*| ) TO lt_area.
-  ENDLOOP.
-  SORT lt_area BY low.
-  DELETE ADJACENT DUPLICATES FROM lt_area COMPARING low.
+
+  IF ench_flag = 'X'.
+    " ENCH -> FUNC OR ENCH -> REPS
+    MOVE-CORRESPONDING gt_range_objname TO lt_area.
+  ELSE.
+    LOOP AT lt_func INTO DATA(ls_area).
+      APPEND VALUE #( sign = 'I' option = 'CP' low = |L{ ls_area-functiongroup }*| ) TO lt_area.
+    ENDLOOP.
+    SORT lt_area BY low.
+    DELETE ADJACENT DUPLICATES FROM lt_area COMPARING low.
+  ENDIF.
+
 
   REFRESH lt_func.
 
@@ -1608,7 +1624,11 @@ FORM frm_get_enho_code .
       APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->obj_name ) TO gt_range_objname.
 
       IF lr_smodilog->obj_type = 'FUGR'.
-        APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_funcname.
+        IF lr_smodilog->sub_type = 'FUNC'.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_funcname.
+        ELSE.
+          APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_objname.
+        ENDIF.
       ENDIF.
 
     ENDIF.
@@ -1625,7 +1645,7 @@ FORM frm_get_enho_code .
             PERFORM frm_get_class.
           WHEN 'FUGR'.
             gv_parent_folder = lv_parent_folder && `SE37/`.
-            PERFORM frm_get_function.
+            PERFORM frm_get_function USING 'X'.
           WHEN 'PROG'.
             gv_parent_folder = lv_parent_folder && `SE38/`.
             PERFORM frm_get_report.
