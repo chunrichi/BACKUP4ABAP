@@ -1476,6 +1476,7 @@ FORM frm_get_enho_impl .
     " AND ta~obj_name IN @gt_range_objname
       AND ta~devclass IN @gt_range_devclass
     INTO TABLE @DATA(lt_enhname).
+  SORT lt_enhname BY enhname.
 
   lr_pb->count = lines( lt_enhname ).
   lr_pb->base_desc = 'Process Hook impl & '.
@@ -1593,6 +1594,9 @@ FORM frm_get_enho_code .
   CLEAR: gt_delt_log, gt_range_objname.
 
   DATA: lt_range_obj_name TYPE RANGE OF smodilog-obj_name.
+  DATA: lt_enho_map TYPE TABLE OF string,
+        lv_string   TYPE string,
+        lv_xstring  TYPE xstring.
 
   " 只需要获取标准程序 非标的已在其他 form 中获取
   lt_range_obj_name = VALUE #( sign = 'E' option = 'CP' ( low = 'Z*' )
@@ -1603,6 +1607,8 @@ FORM frm_get_enho_code .
     obj_name,
     sub_type,
     sub_name,
+    int_type,
+    int_name,
     main_prog,
 
     mod_user,
@@ -1615,6 +1621,10 @@ FORM frm_get_enho_code .
   SORT lt_smodilog BY obj_type.
 
   LOOP AT lt_smodilog REFERENCE INTO DATA(lr_smodilog).
+    APPEND |\\{ lr_smodilog->obj_type }:{ lr_smodilog->obj_name
+           }\\{ lr_smodilog->sub_type }:{ lr_smodilog->sub_name
+           }\\{ lr_smodilog->int_type }:{ lr_smodilog->int_name }| TO lt_enho_map.
+
     IF p_delt = 'X' AND ( ls_delt_log-ddate > lr_smodilog->mod_date
       OR ( ls_delt_log-ddate = lr_smodilog->mod_date AND ls_delt_log-dtime > lr_smodilog->mod_time ) ).
 
@@ -1656,6 +1666,18 @@ FORM frm_get_enho_code .
     ENDAT.
 
   ENDLOOP.
+
+  " 内表转换为长字符串
+  CONCATENATE LINES OF lt_enho_map INTO lv_string SEPARATED BY gc_newline.
+
+  " string -> xstring
+  gr_cover_out->convert(
+        EXPORTING data = lv_string
+        IMPORTING buffer = lv_xstring ).
+
+  " 添加到压缩包
+  gr_zip->add( name    = |{ gv_parent_folder }\\{ 'ench.map.txt' }|
+               content = lv_xstring ).
 
   gt_delt_log       = lt_bu_delt.
   gt_range_objname  = lt_bu_objc.
@@ -2934,6 +2956,7 @@ FORM frm_get_domain .
       AND ta~obj_name IN @gt_range_objname " dd~domname
       AND dd~as4user <> 'SAP'
     INTO TABLE @DATA(lt_dd01l).
+  SORT lt_dd01l BY domname.
 
   lr_pb->count = lines( lt_dd01l ).
   lr_pb->base_desc = 'Process Domain & '.
@@ -3111,6 +3134,7 @@ FORM frm_get_element .
       AND ta~obj_name IN @gt_range_objname " dd~rollname
       AND dd~as4user <> 'SAP'
     INTO TABLE @DATA(lt_dd04l).
+  SORT lt_dd04l BY rollname.
 
   lr_pb->count = lines( lt_dd04l ).
   lr_pb->base_desc = 'Process Element & '.
