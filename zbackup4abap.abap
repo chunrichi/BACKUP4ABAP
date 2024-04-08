@@ -1634,11 +1634,12 @@ FORM frm_get_enho_code .
       APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->obj_name ) TO gt_range_objname.
 
       IF lr_smodilog->obj_type = 'FUGR'.
-        IF lr_smodilog->sub_type = 'FUNC'.
-          APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_funcname.
-        ELSE.
-          APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_objname.
-        ENDIF.
+        CASE lr_smodilog->sub_type.
+          WHEN 'FUNC'.
+            APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_funcname.
+          WHEN 'REPS'.
+            APPEND VALUE #( sign = 'I' option = 'EQ' low = lr_smodilog->sub_name ) TO gt_range_objname.
+        ENDCASE.
       ENDIF.
 
     ENDIF.
@@ -1676,7 +1677,7 @@ FORM frm_get_enho_code .
         IMPORTING buffer = lv_xstring ).
 
   " 添加到压缩包
-  gr_zip->add( name    = |{ gv_parent_folder }\\{ 'ench.map.txt' }|
+  gr_zip->add( name    = |{ lv_parent_folder }\\{ 'ench.map.txt' }|
                content = lv_xstring ).
 
   gt_delt_log       = lt_bu_delt.
