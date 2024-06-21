@@ -3368,8 +3368,6 @@ FORM frm_get_others .
     PERFORM frm_get_strans.
   ENDIF.
 
-  PERFORM frm_get_ench IN PROGRAM zsltest18 IF FOUND USING gr_zip gr_cover_out `ENCH/`.
-
   " 结果存储
   gv_parent_folder = `logs/flow/`.
   PERFORM frm_get_logs.
