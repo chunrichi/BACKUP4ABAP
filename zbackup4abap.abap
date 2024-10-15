@@ -59,6 +59,7 @@ TYPES: BEGIN OF ty_tdevc_parentcl,
 TYPES: tt_tdevc_parentcl TYPE TABLE OF ty_tdevc_parentcl.
 
 CLASS lcl_export_ddldict DEFINITION DEFERRED.
+CLASS lcl_export_smartforms DEFINITION DEFERRED.
 CLASS lcl_pretty_json DEFINITION DEFERRED.
 CLASS lcl_progress_bar DEFINITION DEFERRED.
 
@@ -190,6 +191,23 @@ SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
 SELECTION-SCREEN END OF BLOCK blck2.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
+  " 打印
+
+  " 表单
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_ssfo FOR FIELD p_ssfo.
+    PARAMETERS: p_ssfo AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
+  " 样式
+  SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_ssst FOR FIELD p_ssst.
+    PARAMETERS: p_ssst AS CHECKBOX DEFAULT 'X'.
+  SELECTION-SCREEN END OF LINE.
+
+SELECTION-SCREEN END OF BLOCK blck3.
+
+SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
   " 其他
 
   " Smw0
@@ -210,21 +228,21 @@ SELECTION-SCREEN BEGIN OF BLOCK blck3 WITH FRAME.
     PARAMETERS: p_xslt AS CHECKBOX DEFAULT ''.
   SELECTION-SCREEN END OF LINE.
 
-SELECTION-SCREEN END OF BLOCK blck3.
-
-SELECTION-SCREEN BEGIN OF BLOCK blck4 WITH FRAME.
-  SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 5(23) t_pack FOR FIELD s_pack.
-    SELECT-OPTIONS: s_pack FOR tadir-devclass.
-  SELECTION-SCREEN END OF LINE.
 SELECTION-SCREEN END OF BLOCK blck4.
 
 SELECTION-SCREEN BEGIN OF BLOCK blck5 WITH FRAME.
   SELECTION-SCREEN BEGIN OF LINE.
+    SELECTION-SCREEN COMMENT 5(23) t_pack FOR FIELD s_pack.
+    SELECT-OPTIONS: s_pack FOR tadir-devclass.
+  SELECTION-SCREEN END OF LINE.
+SELECTION-SCREEN END OF BLOCK blck5.
+
+SELECTION-SCREEN BEGIN OF BLOCK blck6 WITH FRAME.
+  SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 5(23) t_delt FOR FIELD p_delt.
     PARAMETERS: p_delt TYPE c AS CHECKBOX DEFAULT 'X'.
   SELECTION-SCREEN END OF LINE.
-SELECTION-SCREEN END OF BLOCK blck5.
+SELECTION-SCREEN END OF BLOCK blck6.
 
 " 标识用于 接口获取内容
 SELECTION-SCREEN BEGIN OF BLOCK brun WITH FRAME.
@@ -270,6 +288,7 @@ AT SELECTION-SCREEN.
     CLEAR: p_prog, p_func, p_clas, p_choka, p_chokb, p_text, p_msag,
            p_tabl, p_cdsv, p_doma, p_dtel, p_ttyp,
            p_smw0, p_tran, p_xslt.
+    CLEAR: p_ssfo, p_ssst.
   ENDIF.
 
 
@@ -295,6 +314,8 @@ START-OF-SELECTION.
 
   PERFORM frm_get_code.
   PERFORM frm_get_ddic.
+
+  PERFORM frm_get_smartforms.
 
   PERFORM frm_get_others.
 
@@ -350,6 +371,9 @@ FORM frm_init_text .
   t_msag = '消息类'.
   t_choka = 'code hook 隐式'.
   t_chokb = 'code hook 插入'.
+
+  t_ssfo = 'SmartForms 表单'.
+  t_ssst = 'SmartForms 样式'.
 
   t_pack = '开发类(包)'.
   t_delt  = '增量获取(不跨client)'.
@@ -2555,6 +2579,227 @@ CLASS lcl_pretty_json IMPLEMENTATION.
   ENDMETHOD.
 ENDCLASS.
 
+CLASS lcl_export_smartforms DEFINITION.
+  PUBLIC SECTION.
+    " 模拟 FB_DOWNLOAD_FORM 和 SSF_DOWNLOAD_STYLE
+    TYPES: ty_hex TYPE x LENGTH 200.
+
+    DATA: sform               TYPE REF TO cl_ssf_fb_smart_form.
+    CONSTANTS: c_xml_ns_uri_sf(255)  TYPE c
+        VALUE 'urn:sap-com:SmartForms:2000:internal-structure', "#EC NOTEXT
+               c_xml_ns_uri_ifr(255) TYPE c
+        VALUE 'urn:sap-com:sdixml-ifr:2000'. "#EC NOTEXT
+
+    CONSTANTS: c_xml_ns_uri_style TYPE tdlen255
+        VALUE 'urn:sap-com:SmartForms:2000:style-internal-structure'. "#EC NOTEXT
+
+    METHODS fb_download_form IMPORTING i_formname     TYPE data
+                             RETURNING VALUE(xstring) TYPE xstring.
+
+    METHODS ssf_download_style IMPORTING i_stylename    TYPE tdssname
+                               RETURNING VALUE(xstring) TYPE xstring.
+
+ENDCLASS.
+
+CLASS lcl_export_smartforms IMPLEMENTATION.
+
+  METHOD fb_download_form.
+
+    DATA: l_type_spec  TYPE tdtext,
+          l_type_req   TYPE tdtext,
+          l_fcode      TYPE syucomm,
+          sf_exception TYPE REF TO cx_ssf_fb.
+
+    DATA: fmnumb      TYPE tdfmnumb,     " Nummer des zugeordneten Fb
+          fmnumb_test TYPE tdfmnumb.     " Fb zum Test der inaktiven Fassung
+
+    " create form object
+    CREATE OBJECT sform.
+
+    " Read form definition
+    TRY.
+        CALL METHOD sform->load
+          EXPORTING
+            im_formname    = i_formname
+            im_language    = sy-langu
+          IMPORTING
+            ex_fmnumb      = fmnumb
+            ex_fmnumb_test = fmnumb_test.
+      CATCH cx_ssf_fb.
+        " 读不出来不处理
+    ENDTRY.
+
+    DATA: l_element     TYPE REF TO if_ixml_element,
+          l_language(2) TYPE c,
+          lv_xstr       TYPE xstring.
+
+    CASE sform->header-formtype.
+      WHEN cssf_formtype_complete OR cssf_formtype_text.
+
+        DATA(g_ixml)       = cl_ixml=>create( ).
+        DATA(xml_document) = g_ixml->create_document( ).
+
+        sform->xml_init( ).
+
+        " create XML for the entire smart form
+        CALL METHOD sform->xml_download
+          EXPORTING
+            parent   = xml_document
+          CHANGING
+            document = xml_document.
+
+        " namespace
+        l_element  = xml_document->get_root_element( ).
+        l_element->set_attribute( name      = 'sf'
+                                  namespace = 'xmlns'
+                                  value     = |{ c_xml_ns_uri_sf }| ).
+        l_element->set_attribute( name  = 'xmlns'
+                                  value = |{ c_xml_ns_uri_ifr }| ).
+        " language
+        WRITE sy-langu TO l_language.
+        l_element->set_attribute( name      = 'language'
+                                  namespace = 'sf'
+                                  value     = |{ l_language }| ).
+
+        " convert DOM to xml
+        " >> 输出
+        DATA(lr_encoding) = g_ixml->create_encoding( character_set = 'UTF-8'
+                                                     byte_order    = 0 ).
+        DATA(lr_ixml_osf_o) = g_ixml->create_stream_factory( ).
+        DATA(lr_ostream_o) = lr_ixml_osf_o->create_ostream_xstring( lv_xstr ).
+        lr_ostream_o->set_encoding( encoding = lr_encoding ).
+        CALL METHOD xml_document->render EXPORTING ostream = lr_ostream_o.
+
+        xstring = lv_xstr.
+      WHEN cssf_formtype_crm_templ.
+        " 无效表格类型 '&1'
+      WHEN cssf_formtype_crm.
+        " 无效表格类型 '&1'
+      WHEN OTHERS.
+        " 无效表格类型 '&1'
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD ssf_download_style.
+
+    DATA: sadm  TYPE ssfcats,
+          spara TYPE STANDARD TABLE OF ssfparas,
+          stab  TYPE STANDARD TABLE OF stxstab,
+          schar TYPE STANDARD TABLE OF ssfstrings.
+
+    " try to load active version of style
+    CALL FUNCTION 'SSF_READ_STYLE'
+      EXPORTING
+        i_style_name           = i_stylename
+        i_style_active_flag    = 'A'   " look for active
+        i_style_variant        = '%MAIN' " %MAIN / space /
+        i_style_language       = sy-langu
+        i_builder              = ''
+      IMPORTING
+        e_header               = sadm
+      TABLES
+        e_paragraphs           = spara
+        e_strings              = schar
+        e_tabstops             = stab
+      EXCEPTIONS
+        active_style_not_found = 1
+        OTHERS                 = 2.
+
+
+    DATA: l_element     TYPE REF TO if_ixml_element,
+          l_root        TYPE REF TO if_ixml_element,
+          l_language(2) TYPE c,
+          lv_xstr       TYPE xstring.
+
+    DATA(g_ixml)       = cl_ixml=>create( ).
+    DATA(xml_document) = g_ixml->create_document( ).
+
+    l_root = xml_document->create_simple_element(
+                           name      = 'SMARTSTYLE'
+                           namespace = 'sf'
+                           parent    = xml_document ).
+    " namespace
+    l_root->set_attribute( name       = 'sf'
+                           namespace  = 'xmlns'
+                           value      = |{ c_xml_ns_uri_style }| ).
+
+    l_root->set_attribute( name       = 'xmlns'
+                           value      = |{ c_xml_ns_uri_ifr }| ).
+
+* language
+    WRITE sy-langu TO l_language.
+    l_root->set_attribute( name       = 'language'
+                           namespace  = 'sf'
+                           value      = |{ l_language }| ).
+
+    " convert data to DOM
+    CALL FUNCTION 'SDIXML_DATA_TO_DOM'
+      EXPORTING
+        name        = 'HEADER'
+        dataobject  = sadm
+      IMPORTING
+        data_as_dom = l_element
+      CHANGING
+        document    = xml_document
+      EXCEPTIONS
+        OTHERS      = 1.
+    l_element->set_namespace_prefix( prefix = 'sf' ).
+    l_root->append_child( new_child = l_element ).
+
+    CALL FUNCTION 'SDIXML_DATA_TO_DOM'
+      EXPORTING
+        name        = 'PARAGRAPHS'
+        dataobject  = spara[]
+      IMPORTING
+        data_as_dom = l_element
+      CHANGING
+        document    = xml_document
+      EXCEPTIONS
+        OTHERS      = 1.
+    l_element->set_namespace_prefix( prefix = 'sf' ).
+    l_root->append_child( new_child = l_element ).
+
+
+    CALL FUNCTION 'SDIXML_DATA_TO_DOM'
+      EXPORTING
+        name        = 'STRINGS'
+        dataobject  = schar[]
+      IMPORTING
+        data_as_dom = l_element
+      CHANGING
+        document    = xml_document
+      EXCEPTIONS
+        OTHERS      = 1.
+    l_element->set_namespace_prefix( prefix = 'sf' ).
+    l_root->append_child( new_child = l_element ).
+
+    CALL FUNCTION 'SDIXML_DATA_TO_DOM'
+      EXPORTING
+        name        = 'TABSTOPS'
+        dataobject  = stab[]
+      IMPORTING
+        data_as_dom = l_element
+      CHANGING
+        document    = xml_document
+      EXCEPTIONS
+        OTHERS      = 1.
+    l_element->set_namespace_prefix( prefix = 'sf' ).
+    l_root->append_child( new_child = l_element ).
+
+    " convert DOM to xml
+    " >> 输出
+    DATA(lr_encoding) = g_ixml->create_encoding( character_set = 'UTF-8'
+                                                 byte_order    = 0 ).
+    DATA(lr_ixml_osf_o) = g_ixml->create_stream_factory( ).
+    DATA(lr_ostream_o) = lr_ixml_osf_o->create_ostream_xstring( lv_xstr ).
+    lr_ostream_o->set_encoding( encoding = lr_encoding ).
+    CALL METHOD xml_document->render EXPORTING ostream = lr_ostream_o.
+
+    xstring = lv_xstr.
+  ENDMETHOD.
+ENDCLASS.
+
 FORM frm_get_tables_ddl USING pr_zip TYPE REF TO cl_abap_zip
                               pr_cover_out TYPE REF TO cl_abap_conv_out_ce
                               p_filename TYPE string.
@@ -3332,6 +3577,184 @@ FORM frm_get_tabletypes.
 
     " 清除缓存
     CLEAR: lv_filename, lv_xstring, lv_source.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_smartforms
+*&---------------------------------------------------------------------*
+*&  打印相关
+*&---------------------------------------------------------------------*
+FORM frm_get_smartforms .
+
+  " 表单
+  IF p_ssfo = 'X'.
+    PERFORM frm_set_parent_folder USING `SMARTFORMS/FORM/`.
+    PERFORM frm_get_ssfo.
+  ENDIF.
+
+  " 样式
+  IF p_ssst = 'X'.
+    PERFORM frm_set_parent_folder USING `SMARTFORMS/STYLE/`.
+    PERFORM frm_get_ssst.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_ssfo
+*&---------------------------------------------------------------------*
+*&  获取打印表单
+*&---------------------------------------------------------------------*
+FORM frm_get_ssfo.
+
+  " STXFADM
+
+  DATA: lv_filename TYPE string.
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
+  SELECT
+    f~formname,
+    f~lastuser,
+    f~lastdate,
+    f~lasttime,
+    f~formtype,
+    t~caption
+    FROM stxfadm AS f
+    LEFT OUTER JOIN stxfadmt AS t ON t~formname = f~formname
+                                 AND t~langu = @sy-langu
+    WHERE f~devclass IN @gt_range_devclass
+      AND f~formname IN @gt_range_objname
+    INTO TABLE @DATA(lt_objects).
+
+  lr_pb->count = lines( lt_objects ).
+  lr_pb->base_desc = 'Process SmartForms Form: & '.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'SSFO' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'SSFO' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  DATA(l_sf) = NEW lcl_export_smartforms( ).
+
+  LOOP AT lt_objects INTO DATA(ls_object).
+    lr_pb->add( i_desc = ls_object-formname ).
+
+    lv_filename = ls_object-formname && '.xml'.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_object-caption.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'SSFO' ls_object-formname ls_object-lastuser ls_object-lastdate ls_object-lasttime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_object-lastdate
+        OR ( ls_delt_log-ddate = ls_object-lastdate AND ls_delt_log-dtime > ls_object-lasttime ).
+        CLEAR: lv_filename.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = l_sf->fb_download_form( ls_object-formname ) ).
+
+    " 清除缓存
+    CLEAR: lv_filename.
+  ENDLOOP.
+
+  " map 文件
+  PERFORM frm_add_map_file USING gv_parent_folder.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form frm_get_ssst
+*&---------------------------------------------------------------------*
+*&  获取打印样式
+*&---------------------------------------------------------------------*
+FORM frm_get_ssst.
+
+  " STXSADM
+
+  DATA: lv_filename TYPE string.
+  DATA: lr_pb TYPE REF TO lcl_progress_bar.
+
+  CREATE OBJECT lr_pb.
+
+  SELECT
+    s~stylename,
+    s~lastuser,
+    s~lastdate,
+    s~lasttime,
+    t~caption
+    FROM stxsadm AS s
+    INNER JOIN tadir AS dir ON dir~pgmid = 'R3TR'
+                           AND dir~object = 'SSST'
+                           AND dir~obj_name = s~stylename
+    LEFT OUTER JOIN stxsadmt AS t ON t~stylename = s~stylename
+                                 AND t~langu = @sy-langu
+    WHERE dir~devclass IN @gt_range_devclass
+      AND s~stylename IN @gt_range_objname
+    INTO TABLE @DATA(lt_objects).
+
+  lr_pb->count = lines( lt_objects ).
+  lr_pb->base_desc = 'Process SmartForms Form: & '.
+
+  DATA: ls_delt_log LIKE LINE OF gt_delt_log.
+  READ TABLE gt_delt_log ASSIGNING FIELD-SYMBOL(<ls_delt_log>) WITH KEY object = 'SSST' BINARY SEARCH.
+  IF sy-subrc <> 0.
+    APPEND VALUE #( object = 'SSST' ddate = sy-datum dtime = sy-uzeit ) TO gt_delt_log.
+  ELSE.
+    ls_delt_log = <ls_delt_log>.
+    <ls_delt_log>-ddate = sy-datum.
+    <ls_delt_log>-dtime = sy-uzeit.
+  ENDIF.
+
+  DATA(l_sf) = NEW lcl_export_smartforms( ).
+
+  LOOP AT lt_objects INTO DATA(ls_object).
+    lr_pb->add( i_desc = ls_object-stylename ).
+
+    lv_filename = ls_object-stylename && '.xml'.
+
+    " map 文件路径
+    PERFORM frm_set_map_file USING lv_filename ls_object-caption.
+
+    lv_filename = gv_parent_folder && lv_filename.
+
+    " 日志 生成
+    PERFORM frm_set_log_flow USING 'SSST' ls_object-stylename ls_object-lastuser ls_object-lastdate ls_object-lasttime.
+
+    " 检查增量
+    IF p_delt = 'X'.
+      IF ls_delt_log-ddate > ls_object-lastdate
+        OR ( ls_delt_log-ddate = ls_object-lastdate AND ls_delt_log-dtime > ls_object-lasttime ).
+        CLEAR: lv_filename.
+
+        CONTINUE.
+      ENDIF.
+    ENDIF.
+
+    " 添加到压缩包
+    gr_zip->add( name    = lv_filename
+                 content = l_sf->ssf_download_style( ls_object-stylename ) ).
+
+    " 清除缓存
+    CLEAR: lv_filename.
   ENDLOOP.
 
   " map 文件
