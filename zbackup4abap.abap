@@ -155,14 +155,7 @@ SELECTION-SCREEN BEGIN OF BLOCK blck2 WITH FRAME.
     SELECTION-SCREEN COMMENT 5(23) t_tabl FOR FIELD p_tabl.
     PARAMETERS: p_tabl AS CHECKBOX DEFAULT 'X' USER-COMMAND tab.
   SELECTION-SCREEN END OF LINE.
-
-  SELECTION-SCREEN BEGIN OF LINE.
-    SELECTION-SCREEN COMMENT 15(10) t_txml MODIF ID gp1 FOR FIELD p_txml.
-    PARAMETERS: p_txml TYPE c RADIOBUTTON GROUP gp1 USER-COMMAND gp1 MODIF ID gp1.
-    SELECTION-SCREEN COMMENT 35(10) t_tddl MODIF ID gp1 FOR FIELD p_tddl.
-    PARAMETERS: p_tddl TYPE c RADIOBUTTON GROUP gp1 MODIF ID gp1 DEFAULT 'X'.
-  SELECTION-SCREEN END OF LINE.
-  SELECTION-SCREEN COMMENT 5(70) t_dddl MODIF ID gp1.
+  SELECTION-SCREEN COMMENT 10(70) t_dddl MODIF ID gp1.
 
   " DDL
   SELECTION-SCREEN BEGIN OF LINE.
@@ -357,8 +350,6 @@ FORM frm_init_text .
   t_prog = '报表程序'.
   t_func = '函数程序'.
   t_tabl = '表内容'.
-  t_txml = '导出 XML'.
-  t_tddl = '导出 DDL'.
   t_clas = '类程序'.
   t_cdsv = 'CDS视图'.
   t_doma = '数据域'.
@@ -633,13 +624,8 @@ FORM frm_get_ddic .
 
   IF p_tabl = abap_true.
     "PERFORM frm_set_parent_folder USING `SE11/`.
-    IF p_txml = abap_true.
-      " no realization
-    ELSE.
-      PERFORM frm_get_tables_ddl USING gr_zip gr_cover_out `SE11/DDL/TABLE/`.
-      PERFORM frm_get_structs_ddl USING gr_zip gr_cover_out `SE11/DDL/STRUCT/`.
-    ENDIF.
-
+    PERFORM frm_get_tables_ddl USING gr_zip gr_cover_out `SE11/DDL/TABLE/`.
+    PERFORM frm_get_structs_ddl USING gr_zip gr_cover_out `SE11/DDL/STRUCT/`.
   ENDIF.
 
   IF p_cdsv = abap_true.
