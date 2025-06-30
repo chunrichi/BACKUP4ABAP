@@ -482,6 +482,8 @@ FORM frm_get_folder_name USING p_type TYPE char2
       " 3. 移除 数字结尾的内容
       " 4. 检查是否为 gt
 
+      CHECK lv_name(1) CA 'ZY'.
+
       REPLACE REGEX `_.*$` IN lv_name WITH ''.
 
       REPLACE REGEX `^[YZ]` IN lv_name WITH ''.
@@ -492,6 +494,8 @@ FORM frm_get_folder_name USING p_type TYPE char2
     WHEN 'F'.
       " 1. 清除 ^ZFM_?|^Z
       " 2. 清除 _ 后的所有内容
+
+      CHECK lv_name(1) CA 'ZY'.
 
       REPLACE REGEX `^[YZ]FM_?|^[YZ]` IN lv_name WITH ''.
       REPLACE REGEX `_.*$` IN lv_name WITH ''.
@@ -1999,9 +2003,13 @@ FORM frm_get_text .
         WHEN OTHERS.
           lv_filename = ls_repot-progname.
 
-          PERFORM frm_get_folder_name USING 'R' ls_repot-progname lv_folder.
-          IF lv_folder IS NOT INITIAL.
-            lv_filename = lv_folder && '/' && lv_filename.
+          IF ls_repot-progname+1(1) = 'X'.
+            lv_filename = 'CMOD' && '/' && lv_filename.
+          ELSE.
+            PERFORM frm_get_folder_name USING 'R' ls_repot-progname lv_folder.
+            IF lv_folder IS NOT INITIAL.
+              lv_filename = lv_folder && '/' && lv_filename.
+            ENDIF.
           ENDIF.
 
           lv_filename = 'SE38/' && lv_filename.
